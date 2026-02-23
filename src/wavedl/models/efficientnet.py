@@ -6,9 +6,10 @@ Wrapper around torchvision's EfficientNet with a regression head.
 Provides optional ImageNet pretrained weights for transfer learning.
 
 **Variants**:
-    - efficientnet_b0: Smallest, fastest (~4.0M backbone params)
-    - efficientnet_b1: Light (~6.5M backbone params)
-    - efficientnet_b2: Balanced (~7.7M backbone params)
+    - efficientnet_b0: Tiny (~5.3M backbone params)
+    - efficientnet_b2: Small (~9.1M backbone params)
+    - efficientnet_b4: Medium (~19M backbone params)
+    - efficientnet_b7: Large (~66M backbone params)
 
 **Note**: EfficientNet is 2D-only. For 1D data, use TCN. For 3D data, use ResNet3D.
 
@@ -29,11 +30,13 @@ import torch.nn as nn
 try:
     from torchvision.models import (
         EfficientNet_B0_Weights,
-        EfficientNet_B1_Weights,
         EfficientNet_B2_Weights,
+        EfficientNet_B4_Weights,
+        EfficientNet_B7_Weights,
         efficientnet_b0,
-        efficientnet_b1,
         efficientnet_b2,
+        efficientnet_b4,
+        efficientnet_b7,
     )
 
     TORCHVISION_AVAILABLE = True
@@ -167,9 +170,9 @@ class EfficientNetBase(BaseModel):
 @register_model("efficientnet_b0")
 class EfficientNetB0(EfficientNetBase):
     """
-    EfficientNet-B0: Smallest, most efficient variant.
+    EfficientNet-B0: Tiny variant, most efficient.
 
-    ~4.0M backbone parameters. Good for: Quick training, limited compute, baseline.
+    ~5.3M backbone parameters. Good for: Quick training, limited compute, baseline.
 
     Args:
         in_shape: (H, W) image dimensions
@@ -195,43 +198,12 @@ class EfficientNetB0(EfficientNetBase):
         )
 
 
-@register_model("efficientnet_b1")
-class EfficientNetB1(EfficientNetBase):
-    """
-    EfficientNet-B1: Slightly larger variant.
-
-    ~6.5M backbone parameters. Good for: Better accuracy with moderate compute.
-
-    Args:
-        in_shape: (H, W) image dimensions
-        out_size: Number of regression targets
-        pretrained: Use ImageNet pretrained weights (default: True)
-        dropout_rate: Dropout rate (default: 0.2)
-        freeze_backbone: Freeze backbone weights for fine-tuning (default: False)
-    """
-
-    def __init__(self, in_shape: tuple[int, int], out_size: int, **kwargs):
-        super().__init__(
-            in_shape=in_shape,
-            out_size=out_size,
-            model_fn=efficientnet_b1,
-            weights_class=EfficientNet_B1_Weights,
-            **kwargs,
-        )
-
-    def __repr__(self) -> str:
-        pt = "pretrained" if self.pretrained else "scratch"
-        return (
-            f"EfficientNet_B1({pt}, in_shape={self.in_shape}, out_size={self.out_size})"
-        )
-
-
 @register_model("efficientnet_b2")
 class EfficientNetB2(EfficientNetBase):
     """
-    EfficientNet-B2: Best balance of size and performance.
+    EfficientNet-B2: Small variant. Best accuracy among the compact tier.
 
-    ~7.7M backbone parameters. Good for: High accuracy without excessive compute.
+    ~9.1M backbone parameters. Good for: High accuracy without excessive compute.
 
     Args:
         in_shape: (H, W) image dimensions
@@ -254,4 +226,66 @@ class EfficientNetB2(EfficientNetBase):
         pt = "pretrained" if self.pretrained else "scratch"
         return (
             f"EfficientNet_B2({pt}, in_shape={self.in_shape}, out_size={self.out_size})"
+        )
+
+
+@register_model("efficientnet_b4")
+class EfficientNetB4(EfficientNetBase):
+    """
+    EfficientNet-B4: Medium variant.
+
+    ~19M backbone parameters. Good for: Strong accuracy with moderate compute budget.
+
+    Args:
+        in_shape: (H, W) image dimensions
+        out_size: Number of regression targets
+        pretrained: Use ImageNet pretrained weights (default: True)
+        dropout_rate: Dropout rate (default: 0.2)
+        freeze_backbone: Freeze backbone weights for fine-tuning (default: False)
+    """
+
+    def __init__(self, in_shape: tuple[int, int], out_size: int, **kwargs):
+        super().__init__(
+            in_shape=in_shape,
+            out_size=out_size,
+            model_fn=efficientnet_b4,
+            weights_class=EfficientNet_B4_Weights,
+            **kwargs,
+        )
+
+    def __repr__(self) -> str:
+        pt = "pretrained" if self.pretrained else "scratch"
+        return (
+            f"EfficientNet_B4({pt}, in_shape={self.in_shape}, out_size={self.out_size})"
+        )
+
+
+@register_model("efficientnet_b7")
+class EfficientNetB7(EfficientNetBase):
+    """
+    EfficientNet-B7: Large variant.
+
+    ~66M backbone parameters. Good for: Maximum accuracy; large datasets with ample compute.
+
+    Args:
+        in_shape: (H, W) image dimensions
+        out_size: Number of regression targets
+        pretrained: Use ImageNet pretrained weights (default: True)
+        dropout_rate: Dropout rate (default: 0.2)
+        freeze_backbone: Freeze backbone weights for fine-tuning (default: False)
+    """
+
+    def __init__(self, in_shape: tuple[int, int], out_size: int, **kwargs):
+        super().__init__(
+            in_shape=in_shape,
+            out_size=out_size,
+            model_fn=efficientnet_b7,
+            weights_class=EfficientNet_B7_Weights,
+            **kwargs,
+        )
+
+    def __repr__(self) -> str:
+        pt = "pretrained" if self.pretrained else "scratch"
+        return (
+            f"EfficientNet_B7({pt}, in_shape={self.in_shape}, out_size={self.out_size})"
         )

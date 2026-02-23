@@ -27,6 +27,8 @@ Reference:
 Author: Ductho Le (ductho.le@outlook.com)
 """
 
+from typing import ClassVar
+
 import torch
 import torch.nn.functional as F
 
@@ -56,13 +58,20 @@ class MaxViTBase(BaseModel):
     2D only due to attention structure.
 
     Note:
-        MaxViT requires input dimensions divisible by 28 (4x stem downsample × 7 window).
+        MaxViT ``_tf_`` models use window_size=7 with 32× total downsampling
+        (4× stem + 4 stages of 2×), requiring input dimensions that are multiples
+        of the model's native size (e.g. 224, 384, 512).
         This implementation automatically resizes inputs to the nearest compatible size.
     """
 
-    # MaxViT stem downsamples by 4x, then requires divisibility by 7 (window size)
-    # So original input must be divisible by 4 * 7 = 28
-    _DIVISOR = 28
+    # Map model name suffixes to their native input size.
+    # MaxViT _tf_ models require input divisible by native_size because:
+    #   window_size=7, total_downsample=32 → 7 × 32 = 224 (or scaled variants)
+    _NATIVE_SIZES: ClassVar[dict[str, int]] = {
+        "224": 224,
+        "384": 384,
+        "512": 512,
+    }
 
     def __init__(
         self,
@@ -83,6 +92,9 @@ class MaxViTBase(BaseModel):
         self.freeze_backbone = freeze_backbone
         self.model_name = model_name
 
+        # Determine the divisor from the model's native size
+        self._divisor = self._get_native_size(model_name)
+
         # Compute compatible input size for MaxViT attention windows
         self._target_size = self._compute_compatible_size(in_shape)
 
@@ -94,6 +106,7 @@ class MaxViTBase(BaseModel):
                 model_name,
                 pretrained=pretrained,
                 num_classes=0,  # Remove classifier
+                img_size=self._target_size,  # Configure for actual input size
             )
 
             # Get feature dimension using compatible size (eval mode to preserve pretrained BN stats)
@@ -120,6 +133,15 @@ class MaxViTBase(BaseModel):
         if freeze_backbone:
             self._freeze_backbone()
 
+    @classmethod
+    def _get_native_size(cls, model_name: str) -> int:
+        """Get the native input size from the model name suffix."""
+        for suffix, size in cls._NATIVE_SIZES.items():
+            if model_name.endswith(suffix):
+                return size
+        # Default: 224 (most common MaxViT variant)
+        return 224
+
     def _adapt_input_channels(self):
         """Adapt first conv layer for single-channel input."""
         from wavedl.models._pretrained_utils import find_and_adapt_input_convs
@@ -144,20 +166,21 @@ class MaxViTBase(BaseModel):
         """
         Compute the nearest input size compatible with MaxViT attention windows.
 
-        MaxViT requires input dimensions divisible by 28 (4x stem downsample × 7 window).
+        MaxViT ``_tf_`` models require input dimensions that are multiples of
+        their native size (e.g. 224 for ``_tf_224``).
         This rounds up to the nearest compatible size.
 
         Args:
             in_shape: Original (H, W) input shape
 
         Returns:
-            Compatible (H, W) shape divisible by 28
+            Compatible (H, W) shape divisible by native size
         """
         import math
 
         h, w = in_shape
-        target_h = math.ceil(h / self._DIVISOR) * self._DIVISOR
-        target_w = math.ceil(w / self._DIVISOR) * self._DIVISOR
+        target_h = max(self._divisor, math.ceil(h / self._divisor) * self._divisor)
+        target_w = max(self._divisor, math.ceil(w / self._divisor) * self._divisor)
         return (target_h, target_w)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:

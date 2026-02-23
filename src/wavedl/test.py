@@ -45,6 +45,11 @@ import pickle  # noqa: E402
 from pathlib import Path  # noqa: E402
 from typing import Any  # noqa: E402
 
+# Force Agg backend before pyplot import (headless HPC nodes have no display)
+import matplotlib  # noqa: E402
+
+
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np  # noqa: E402
 import pandas as pd  # noqa: E402

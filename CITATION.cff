@@ -2,8 +2,8 @@ cff-version: 1.2.0
 message: "If you use this software, please cite it as below."
 type: software
 title: "WaveDL: A Scalable Deep Learning Framework for Wave-Based Inverse Problems"
-version: 1.7.1
-date-released: 2026-02-05
+version: 1.8.0
+date-released: 2026-02-23
 doi: 10.5281/zenodo.18012338
 url: "https://doi.org/10.5281/zenodo.18012338"
 repository-code: "https://github.com/ductho-le/WaveDL"

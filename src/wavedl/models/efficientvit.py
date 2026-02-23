@@ -13,15 +13,10 @@ multi-head self-attention while maintaining model capability.
     - Excellent for real-time NDE applications
 
 **Variants**:
-    - efficientvit_m0: 2.3M params (mobile, fastest)
-    - efficientvit_m1: 2.9M params (mobile)
-    - efficientvit_m2: 4.2M params (mobile)
-    - efficientvit_b0: 3.4M params (balanced)
-    - efficientvit_b1: 9.1M params (balanced)
-    - efficientvit_b2: 24M params (balanced)
-    - efficientvit_b3: 49M params (balanced)
-    - efficientvit_l1: 53M params (large)
-    - efficientvit_l2: 64M params (large)
+    - efficientvit_m1: 2.6M params (mobile, ultra-lightweight)
+    - efficientvit_b1: 7.5M params (small)
+    - efficientvit_b2: 21.8M params (medium)
+    - efficientvit_l2: 60.5M params (large)
 
 **Requirements**:
     - timm >= 0.9.0 (for EfficientViT models)
@@ -42,16 +37,11 @@ from wavedl.models.registry import register_model
 
 
 __all__ = [
-    "EfficientViTB0",
     "EfficientViTB1",
     "EfficientViTB2",
-    "EfficientViTB3",
     "EfficientViTBase",
-    "EfficientViTL1",
     "EfficientViTL2",
-    "EfficientViTM0",
     "EfficientViTM1",
-    "EfficientViTM2",
 ]
 
 
@@ -163,43 +153,18 @@ class EfficientViTBase(BaseModel):
 # =============================================================================
 
 
-@register_model("efficientvit_m0")
-class EfficientViTM0(EfficientViTBase):
-    """
-    EfficientViT-M0: ~2.2M backbone parameters (fastest mobile variant).
-
-    Cascaded group attention for efficient inference.
-    Ideal for edge deployment and real-time NDE applications.
-    2D only.
-
-    Example:
-        >>> model = EfficientViTM0(in_shape=(224, 224), out_size=3)
-        >>> x = torch.randn(4, 1, 224, 224)
-        >>> out = model(x)  # (4, 3)
-    """
-
-    def __init__(self, in_shape: tuple[int, int], out_size: int, **kwargs):
-        super().__init__(
-            in_shape=in_shape,
-            out_size=out_size,
-            model_name="efficientvit_m0",
-            **kwargs,
-        )
-
-    def __repr__(self) -> str:
-        return (
-            f"EfficientViT_M0(in_shape={self.in_shape}, out_size={self.out_size}, "
-            f"pretrained={self.pretrained})"
-        )
-
-
 @register_model("efficientvit_m1")
 class EfficientViTM1(EfficientViTBase):
     """
-    EfficientViT-M1: ~2.6M backbone parameters.
+    EfficientViT-M1: ~2.6M backbone parameters. Mobile-tier representative.
 
-    Slightly larger mobile variant with better accuracy.
-    2D only.
+    Ultra-lightweight, edge-deployable. Cascaded group attention for real-time
+    NDE applications. 2D only.
+
+    Example:
+        >>> model = EfficientViTM1(in_shape=(224, 224), out_size=3)
+        >>> x = torch.randn(4, 1, 224, 224)
+        >>> out = model(x)  # (4, 3)
     """
 
     def __init__(self, in_shape: tuple[int, int], out_size: int, **kwargs):
@@ -217,71 +182,17 @@ class EfficientViTM1(EfficientViTBase):
         )
 
 
-@register_model("efficientvit_m2")
-class EfficientViTM2(EfficientViTBase):
-    """
-    EfficientViT-M2: ~3.8M backbone parameters.
-
-    Largest mobile variant, best accuracy among M-series.
-    2D only.
-    """
-
-    def __init__(self, in_shape: tuple[int, int], out_size: int, **kwargs):
-        super().__init__(
-            in_shape=in_shape,
-            out_size=out_size,
-            model_name="efficientvit_m2",
-            **kwargs,
-        )
-
-    def __repr__(self) -> str:
-        return (
-            f"EfficientViT_M2(in_shape={self.in_shape}, out_size={self.out_size}, "
-            f"pretrained={self.pretrained})"
-        )
-
-
 # =============================================================================
 # BALANCED VARIANTS (B-series)
 # =============================================================================
 
 
-@register_model("efficientvit_b0")
-class EfficientViTB0(EfficientViTBase):
-    """
-    EfficientViT-B0: ~2.1M backbone parameters.
-
-    Smallest balanced variant. Good accuracy-speed trade-off.
-    2D only.
-
-    Example:
-        >>> model = EfficientViTB0(in_shape=(224, 224), out_size=3)
-        >>> x = torch.randn(4, 1, 224, 224)
-        >>> out = model(x)  # (4, 3)
-    """
-
-    def __init__(self, in_shape: tuple[int, int], out_size: int, **kwargs):
-        super().__init__(
-            in_shape=in_shape,
-            out_size=out_size,
-            model_name="efficientvit_b0",
-            **kwargs,
-        )
-
-    def __repr__(self) -> str:
-        return (
-            f"EfficientViT_B0(in_shape={self.in_shape}, out_size={self.out_size}, "
-            f"pretrained={self.pretrained})"
-        )
-
-
 @register_model("efficientvit_b1")
 class EfficientViTB1(EfficientViTBase):
     """
-    EfficientViT-B1: ~7.5M backbone parameters.
+    EfficientViT-B1: ~7.5M backbone parameters. Small-tier representative.
 
-    Medium balanced variant with improved capacity.
-    2D only.
+    Good accuracy-speed trade-off. 2D only.
     """
 
     def __init__(self, in_shape: tuple[int, int], out_size: int, **kwargs):
@@ -302,10 +213,9 @@ class EfficientViTB1(EfficientViTBase):
 @register_model("efficientvit_b2")
 class EfficientViTB2(EfficientViTBase):
     """
-    EfficientViT-B2: ~21.8M backbone parameters.
+    EfficientViT-B2: ~21.8M backbone parameters. Medium-tier representative.
 
-    Larger balanced variant for complex patterns.
-    2D only.
+    Strong capacity for complex 2D wave patterns. 2D only.
     """
 
     def __init__(self, in_shape: tuple[int, int], out_size: int, **kwargs):
@@ -323,66 +233,17 @@ class EfficientViTB2(EfficientViTBase):
         )
 
 
-@register_model("efficientvit_b3")
-class EfficientViTB3(EfficientViTBase):
-    """
-    EfficientViT-B3: ~46.1M backbone parameters.
-
-    Largest balanced variant, highest accuracy in B-series.
-    2D only.
-    """
-
-    def __init__(self, in_shape: tuple[int, int], out_size: int, **kwargs):
-        super().__init__(
-            in_shape=in_shape,
-            out_size=out_size,
-            model_name="efficientvit_b3",
-            **kwargs,
-        )
-
-    def __repr__(self) -> str:
-        return (
-            f"EfficientViT_B3(in_shape={self.in_shape}, out_size={self.out_size}, "
-            f"pretrained={self.pretrained})"
-        )
-
-
 # =============================================================================
 # LARGE VARIANTS (L-series)
 # =============================================================================
 
 
-@register_model("efficientvit_l1")
-class EfficientViTL1(EfficientViTBase):
-    """
-    EfficientViT-L1: ~49.5M backbone parameters.
-
-    Large variant for maximum accuracy.
-    2D only.
-    """
-
-    def __init__(self, in_shape: tuple[int, int], out_size: int, **kwargs):
-        super().__init__(
-            in_shape=in_shape,
-            out_size=out_size,
-            model_name="efficientvit_l1",
-            **kwargs,
-        )
-
-    def __repr__(self) -> str:
-        return (
-            f"EfficientViT_L1(in_shape={self.in_shape}, out_size={self.out_size}, "
-            f"pretrained={self.pretrained})"
-        )
-
-
 @register_model("efficientvit_l2")
 class EfficientViTL2(EfficientViTBase):
     """
-    EfficientViT-L2: ~60.5M backbone parameters.
+    EfficientViT-L2: ~60.5M backbone parameters. Large-tier representative.
 
-    Largest variant, best accuracy.
-    2D only.
+    Maximum accuracy for complex tasks with ample compute. 2D only.
     """
 
     def __init__(self, in_shape: tuple[int, int], out_size: int, **kwargs):

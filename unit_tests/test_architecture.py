@@ -69,6 +69,9 @@ MODEL_DIMS = {
     "efficientvit": [2],
     "unireplknet": [1, 2],
     "ratenet": [2],
+    # v1.8+ models
+    "wavenet": [1],
+    "s4d": [1],
 }
 
 DEFAULT_DIMS = [2]
@@ -397,19 +400,34 @@ class TestModelRegistry:
 
     def test_list_models(self):
         models = list_models()
-        assert len(models) >= 69  # At least 69 models
+        assert len(models) >= 71  # 69 base - 6 pruned + 8 added
         assert "cnn" in models
         assert "resnet18" in models
-        # Check new models
+        # Check existing models
         assert "maxvit_tiny" in models
         assert "fastvit_t8" in models
         assert "caformer_s18" in models
         assert "convnext_v2_tiny" in models
         assert "mamba_1d" in models
         # v1.6.1 models
-        assert "efficientvit_m0" in models
-        assert "efficientvit_b0" in models
+        assert "efficientvit_m1" in models
+        assert "efficientvit_b1" in models
         assert "unireplknet_tiny" in models
+        # v1.8 new models
+        assert "efficientnet_b4" in models
+        assert "efficientnet_b7" in models
+        assert "wavenet" in models
+        assert "wavenet_small" in models
+        assert "wavenet_large" in models
+        assert "s4d" in models
+        assert "s4d_small" in models
+        assert "s4d_large" in models
+        # Removed models should not be present
+        assert "efficientnet_b1" not in models
+        assert "efficientvit_m0" not in models
+        assert "efficientvit_b0" not in models
+        assert "efficientvit_b3" not in models
+        assert "efficientvit_l1" not in models
 
     def test_build_model(self):
         model = build_model("cnn", in_shape=(256,), out_size=3)

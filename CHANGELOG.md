@@ -5,6 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+## [1.8.0] - 2026-02-23
+
+### Added
+- **Models**: 8 new architectures (69 → 71 public, after removing 6):
+  - **WaveNet** (small/base/large): Gated dilated convolutional network adapted for 1D waveform regression. Signature `tanh×sigmoid` gated activation, skip connections summed across all dilation layers, same-padding (non-causal). ~1M/4M/15M params. 1D-only.
+  - **S4D** (small/base/large): Diagonal Structured State Space Model (S4D-Lin kernel). Computed as FFT convolution — O(L log L), fully vectorized, `torch.compile`-safe, MPS-compatible. HiPPO-LegS initialization. ~0.8M/3.2M/11M params. 1D-only.
+  - **EfficientNet-B4**: Medium tier, ~19M params. Torchvision pretrained. 2D-only.
+  - **EfficientNet-B7**: Large tier, ~66M params. Torchvision pretrained. 2D-only.
+
+### Removed
+- **Models**: 6 variants pruned to clean up redundant parameter-count tiers:
+  - `efficientnet_b1` (7.8M) — sandwiched between B0 (5.3M) and B2 (9.1M)
+  - `efficientvit_m0` (2.2M), `efficientvit_m2` (3.8M) — M-series clusters 2–4M; keep M1 only
+  - `efficientvit_b0` (2.1M) — duplicates M-series range
+  - `efficientvit_b3` (46M), `efficientvit_l1` (49M) — near-identical; keep L2 (60M) only
+- **Resulting EfficientNet tier**: B0 (5.3M) → B2 (9.1M) → B4 (19M) → B7 (66M)
+- **Resulting EfficientViT tier**: M1 (2.6M) → B1 (7.5M) → B2 (21.8M) → L2 (60.5M)
+
+### Fixed
+- **DenseNet**: Replaced `MaxPool` with `AvgPool` in stem — workaround for a Triton compiler bug that causes incorrect gradients on large tensors when using `--compile`
+- **MaxViT**: Replaced hardcoded `_DIVISOR = 28` with a `_NATIVE_SIZES` map (`224 → 224`, `384 → 384`, `512 → 512`); `img_size` is now passed to `timm.create_model()` so attention windows are pre-configured for the actual input resolution
+- **HPC plotting**: Added `matplotlib.use("Agg")` before `pyplot` import in `train.py`, `test.py`, and `utils/metrics.py` — prevents crash on headless compute nodes that have no `$DISPLAY`
+
 ## [1.7.1] - 2026-02-14
 
 ### Added
@@ -430,7 +455,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Example configurations and training scripts
 - MIT License and citation file
 
-[Unreleased]: https://github.com/ductho-le/WaveDL/compare/v1.7.1...HEAD
+[Unreleased]: https://github.com/ductho-le/WaveDL/compare/v1.8.0...HEAD
+[1.8.0]: https://github.com/ductho-le/WaveDL/compare/v1.7.1...v1.8.0
 [1.7.1]: https://github.com/ductho-le/WaveDL/compare/v1.7.0...v1.7.1
 [1.7.0]: https://github.com/ductho-le/WaveDL/compare/v1.6.3...v1.7.0
 [1.6.3]: https://github.com/ductho-le/WaveDL/compare/v1.6.2...v1.6.3

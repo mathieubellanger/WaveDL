@@ -120,3 +120,6 @@ logs/
 
 # Documentation
 manuscript/
+
+# Apps
+examples/ios_demo

@@ -157,21 +157,15 @@ class DenseNetBase(BaseModel):
         self.growth_rate = growth_rate
         self.dropout_rate = dropout_rate
 
-        Conv, BN, _, AdaptivePool = _get_layers(self.dim)
-        MaxPool = (
-            nn.MaxPool1d
-            if self.dim == 1
-            else nn.MaxPool2d
-            if self.dim == 2
-            else nn.MaxPool3d
-        )
+        Conv, BN, AvgPool, AdaptivePool = _get_layers(self.dim)
 
-        # Stem
+        # Stem (uses AvgPool instead of MaxPool for torch.compile compatibility;
+        # MaxPool's backward triggers a Triton compiler bug with large tensors)
         self.stem = nn.Sequential(
             Conv(1, num_init_features, kernel_size=7, stride=2, padding=3, bias=False),
             BN(num_init_features),
             nn.ReLU(inplace=True),
-            MaxPool(kernel_size=3, stride=2, padding=1),
+            AvgPool(kernel_size=3, stride=2, padding=1),
         )
 
         # Build dense blocks and transitions

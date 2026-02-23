@@ -6,10 +6,10 @@ This module provides a centralized registry for neural network architectures,
 enabling dynamic model selection via command-line arguments.
 
 **Dimensionality Coverage**:
-    - 1D (waveforms): TCN, CNN, ResNet, ConvNeXt, ConvNeXt V2, DenseNet, ViT, Mamba
+    - 1D (waveforms): TCN, CNN, ResNet, ConvNeXt, ConvNeXt V2, DenseNet, ViT, Mamba, WaveNet, S4D
     - 2D (images): CNN, ResNet, ConvNeXt, ConvNeXt V2, DenseNet, ViT, UNet,
                    EfficientNet, MobileNetV3, RegNet, Swin, MaxViT, FastViT,
-                   CAFormer, PoolFormer, Vision Mamba
+                   CAFormer, PoolFormer, Vision Mamba, EfficientViT
     - 3D (volumes): ResNet3D, CNN, ResNet, ConvNeXt, ConvNeXt V2, DenseNet
 
 Usage:
@@ -57,7 +57,7 @@ from .convnext_v2 import (
     ConvNeXtV2TinyPretrained,
 )
 from .densenet import DenseNet121, DenseNet169
-from .efficientnet import EfficientNetB0, EfficientNetB1, EfficientNetB2
+from .efficientnet import EfficientNetB0, EfficientNetB2, EfficientNetB4, EfficientNetB7
 from .efficientnetv2 import EfficientNetV2L, EfficientNetV2M, EfficientNetV2S
 from .mamba import Mamba1D, VimBase, VimSmall, VimTiny
 from .mobilenetv3 import MobileNetV3Large, MobileNetV3Small
@@ -71,10 +71,12 @@ from .registry import (
 from .regnet import RegNetY1_6GF, RegNetY3_2GF, RegNetY8GF, RegNetY400MF, RegNetY800MF
 from .resnet import ResNet18, ResNet34, ResNet50
 from .resnet3d import MC3_18, ResNet3D18
+from .s4d import S4D, S4DLarge, S4DSmall
 from .swin import SwinBase, SwinSmall, SwinTiny
 from .tcn import TCN, TCNLarge, TCNSmall
 from .unet import UNetRegression
 from .vit import ViTBase_, ViTSmall, ViTTiny
+from .wavenet import WaveNet, WaveNetLarge, WaveNetSmall
 
 
 # Optional RATENet (unpublished, may be gitignored)
@@ -90,15 +92,10 @@ except ImportError:
 try:
     from .caformer import CaFormerS18, CaFormerS36, PoolFormerS12
     from .efficientvit import (
-        EfficientViTB0,
         EfficientViTB1,
         EfficientViTB2,
-        EfficientViTB3,
-        EfficientViTL1,
         EfficientViTL2,
-        EfficientViTM0,
         EfficientViTM1,
-        EfficientViTM2,
     )
     from .fastvit import FastViTS12, FastViTSA12, FastViTT8, FastViTT12
     from .maxvit import MaxViTBaseLarge, MaxViTSmall, MaxViTTiny
@@ -119,6 +116,7 @@ __all__ = [
     "CNN",
     "MC3_18",
     "MODEL_REGISTRY",
+    "S4D",
     "TCN",
     # Classes (uppercase first, alphabetically)
     "BaseModel",
@@ -133,8 +131,9 @@ __all__ = [
     "DenseNet121",
     "DenseNet169",
     "EfficientNetB0",
-    "EfficientNetB1",
     "EfficientNetB2",
+    "EfficientNetB4",
+    "EfficientNetB7",
     "EfficientNetV2L",
     "EfficientNetV2M",
     "EfficientNetV2S",
@@ -150,6 +149,8 @@ __all__ = [
     "ResNet18",
     "ResNet34",
     "ResNet50",
+    "S4DLarge",
+    "S4DSmall",
     "SwinBase",
     "SwinSmall",
     "SwinTiny",
@@ -162,6 +163,9 @@ __all__ = [
     "VimBase",
     "VimSmall",
     "VimTiny",
+    "WaveNet",
+    "WaveNetLarge",
+    "WaveNetSmall",
     # Functions (lowercase, alphabetically)
     "build_model",
     "get_model",
@@ -175,15 +179,10 @@ if _HAS_TIMM_MODELS:
         [
             "CaFormerS18",
             "CaFormerS36",
-            "EfficientViTB0",
             "EfficientViTB1",
             "EfficientViTB2",
-            "EfficientViTB3",
-            "EfficientViTL1",
             "EfficientViTL2",
-            "EfficientViTM0",
             "EfficientViTM1",
-            "EfficientViTM2",
             "FastViTS12",
             "FastViTSA12",
             "FastViTT8",

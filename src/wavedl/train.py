@@ -100,6 +100,14 @@ if TYPE_CHECKING:
 # Suppress Pydantic warnings from accelerate's internal Field() usage
 warnings.filterwarnings("ignore", category=UserWarning, module="pydantic")
 
+# Force non-interactive Agg backend BEFORE importing pyplot.
+# On HPC compute nodes there is no $DISPLAY / Wayland compositor, so the default
+# Tk/Qt/Wx backend raises an error at import time. Agg renders to in-memory
+# buffers and fully supports savefig(), so training curves are saved correctly.
+import matplotlib
+
+
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd

@@ -11,6 +11,10 @@ Version: 1.1.0
 
 from typing import Any
 
+import matplotlib
+
+
+matplotlib.use("Agg")  # Headless-safe: no display required (HPC, CI, SSH)
 import matplotlib.pyplot as plt
 import numpy as np
 from scipy.stats import pearsonr
