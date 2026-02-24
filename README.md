@@ -465,65 +465,67 @@ WaveDL/
 
 ```bash
 # Run once on login node (with internet) — downloads ALL pretrained weights
+# Uses download-only approach (no model instantiation) to avoid CPU time limits
 python -c "
-import os
+import os, torch, warnings
+warnings.filterwarnings('ignore', category=UserWarning, module='pydantic')
 os.environ['TORCH_HOME'] = '.torch_cache'  # Match WaveDL's HPC cache location
+os.environ['HF_HOME'] = '.hf_cache'        # Match WaveDL's HPC cache for timm models
 
 from torchvision import models as m
 from torchvision.models import video as v
 
-# === TorchVision Models (use IMAGENET1K_V1 to match WaveDL) ===
-models = [
-    ('resnet18', m.ResNet18_Weights.IMAGENET1K_V1),
-    ('resnet50', m.ResNet50_Weights.IMAGENET1K_V1),
-    ('efficientnet_b0', m.EfficientNet_B0_Weights.IMAGENET1K_V1),
-    ('efficientnet_b2', m.EfficientNet_B2_Weights.IMAGENET1K_V1),
-    ('efficientnet_b4', m.EfficientNet_B4_Weights.IMAGENET1K_V2),
-    ('efficientnet_b7', m.EfficientNet_B7_Weights.IMAGENET1K_V1),
-    ('efficientnet_v2_s', m.EfficientNet_V2_S_Weights.IMAGENET1K_V1),
-    ('efficientnet_v2_m', m.EfficientNet_V2_M_Weights.IMAGENET1K_V1),
-    ('efficientnet_v2_l', m.EfficientNet_V2_L_Weights.IMAGENET1K_V1),
-    ('mobilenet_v3_small', m.MobileNet_V3_Small_Weights.IMAGENET1K_V1),
-    ('mobilenet_v3_large', m.MobileNet_V3_Large_Weights.IMAGENET1K_V1),
-    ('regnet_y_400mf', m.RegNet_Y_400MF_Weights.IMAGENET1K_V1),
-    ('regnet_y_800mf', m.RegNet_Y_800MF_Weights.IMAGENET1K_V1),
-    ('regnet_y_1_6gf', m.RegNet_Y_1_6GF_Weights.IMAGENET1K_V1),
-    ('regnet_y_3_2gf', m.RegNet_Y_3_2GF_Weights.IMAGENET1K_V1),
-    ('regnet_y_8gf', m.RegNet_Y_8GF_Weights.IMAGENET1K_V1),
-    ('swin_t', m.Swin_T_Weights.IMAGENET1K_V1),
-    ('swin_s', m.Swin_S_Weights.IMAGENET1K_V1),
-    ('swin_b', m.Swin_B_Weights.IMAGENET1K_V1),
-    ('convnext_tiny', m.ConvNeXt_Tiny_Weights.IMAGENET1K_V1),
-    ('densenet121', m.DenseNet121_Weights.IMAGENET1K_V1),
+# === TorchVision + Video Models — download only, no model instantiation ===
+urls = [
+    ('ResNet18',         m.ResNet18_Weights.IMAGENET1K_V1.url),
+    ('ResNet50',         m.ResNet50_Weights.IMAGENET1K_V1.url),
+    ('EfficientNet_B0',  m.EfficientNet_B0_Weights.IMAGENET1K_V1.url),
+    ('EfficientNet_B2',  m.EfficientNet_B2_Weights.IMAGENET1K_V1.url),
+    ('EfficientNet_B4',  m.EfficientNet_B4_Weights.IMAGENET1K_V1.url),
+    ('EfficientNet_B7',  m.EfficientNet_B7_Weights.IMAGENET1K_V1.url),
+    ('EfficientNetV2_S', m.EfficientNet_V2_S_Weights.IMAGENET1K_V1.url),
+    ('EfficientNetV2_M', m.EfficientNet_V2_M_Weights.IMAGENET1K_V1.url),
+    ('EfficientNetV2_L', m.EfficientNet_V2_L_Weights.IMAGENET1K_V1.url),
+    ('MobileNetV3_S',    m.MobileNet_V3_Small_Weights.IMAGENET1K_V1.url),
+    ('MobileNetV3_L',    m.MobileNet_V3_Large_Weights.IMAGENET1K_V1.url),
+    ('RegNet_Y_400MF',   m.RegNet_Y_400MF_Weights.IMAGENET1K_V1.url),
+    ('RegNet_Y_800MF',   m.RegNet_Y_800MF_Weights.IMAGENET1K_V1.url),
+    ('RegNet_Y_1_6GF',   m.RegNet_Y_1_6GF_Weights.IMAGENET1K_V1.url),
+    ('RegNet_Y_3_2GF',   m.RegNet_Y_3_2GF_Weights.IMAGENET1K_V1.url),
+    ('RegNet_Y_8GF',     m.RegNet_Y_8GF_Weights.IMAGENET1K_V1.url),
+    ('Swin_T',           m.Swin_T_Weights.IMAGENET1K_V1.url),
+    ('Swin_S',           m.Swin_S_Weights.IMAGENET1K_V1.url),
+    ('Swin_B',           m.Swin_B_Weights.IMAGENET1K_V1.url),
+    ('ConvNeXt_Tiny',    m.ConvNeXt_Tiny_Weights.IMAGENET1K_V1.url),
+    ('DenseNet121',      m.DenseNet121_Weights.IMAGENET1K_V1.url),
+    ('R3D_18',           v.R3D_18_Weights.KINETICS400_V1.url),
+    ('MC3_18',           v.MC3_18_Weights.KINETICS400_V1.url),
 ]
-for name, w in models:
-    getattr(m, name)(weights=w); print(f'✓ {name}')
+cache = os.path.join(os.environ['TORCH_HOME'], 'hub', 'checkpoints')
+os.makedirs(cache, exist_ok=True)
+for name, url in urls:
+    torch.hub.download_url_to_file(url, os.path.join(cache, os.path.basename(url)))
+    print(f'  ✓ {name}')
 
-# 3D video models
-v.r3d_18(weights=v.R3D_18_Weights.KINETICS400_V1); print('✓ r3d_18')
-v.mc3_18(weights=v.MC3_18_Weights.KINETICS400_V1); print('✓ mc3_18')
-
-# === Timm Models (MaxViT, FastViT, CAFormer, ConvNeXt V2) ===
+# === Timm Models — download only via HuggingFace Hub ===
 import timm
-
+from huggingface_hub import hf_hub_download
 timm_models = [
-    # MaxViT (no suffix - timm resolves to default)
     'maxvit_tiny_tf_224', 'maxvit_small_tf_224', 'maxvit_base_tf_224',
-    # FastViT (no suffix)
     'fastvit_t8', 'fastvit_t12', 'fastvit_s12', 'fastvit_sa12',
-    # CAFormer/PoolFormer (no suffix)
     'caformer_s18', 'caformer_s36', 'caformer_m36', 'poolformer_s12',
-    # ConvNeXt V2 (no suffix)
     'convnextv2_tiny',
-    # EfficientViT (pruned to 4 representatives)
-    'efficientvit_m1',
-    'efficientvit_b1', 'efficientvit_b2',
-    'efficientvit_l2',
+    'efficientvit_m1', 'efficientvit_b1', 'efficientvit_b2', 'efficientvit_l2',
 ]
 for name in timm_models:
-    timm.create_model(name, pretrained=True); print(f'✓ {name}')
+    cfg = timm.get_pretrained_cfg(name)
+    if cfg.hf_hub_id:
+        hf_hub_download(cfg.hf_hub_id, 'model.safetensors')
+    elif cfg.url:
+        torch.hub.download_url_to_file(cfg.url, os.path.join(cache, os.path.basename(cfg.url)))
+    print(f'  ✓ {name}')
 
-print('\\n✓ All pretrained weights cached!')
+print(f'\n✓ All {len(urls) + len(timm_models)} pretrained weight files cached!')
 "
 ```
 

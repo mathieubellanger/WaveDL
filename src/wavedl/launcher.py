@@ -106,6 +106,11 @@ def setup_environment() -> None:
         os.environ.setdefault("TORCH_HOME", f"{cache_base}/.torch_cache")
         Path(os.environ["TORCH_HOME"]).mkdir(parents=True, exist_ok=True)
 
+        # HuggingFace Hub cache (timm downloads pretrained weights from HF Hub)
+        os.environ.setdefault("HF_HOME", f"{cache_base}/.hf_cache")
+        Path(os.environ["HF_HOME"]).mkdir(parents=True, exist_ok=True)
+        os.environ.setdefault("HF_HUB_OFFLINE", "1")  # No HTTP on compute nodes
+
         # Triton/Inductor caches - prevents permission errors with --compile
         os.environ.setdefault("TRITON_CACHE_DIR", f"{cache_base}/.triton_cache")
         os.environ.setdefault(
@@ -114,22 +119,20 @@ def setup_environment() -> None:
         Path(os.environ["TRITON_CACHE_DIR"]).mkdir(parents=True, exist_ok=True)
         Path(os.environ["TORCHINDUCTOR_CACHE_DIR"]).mkdir(parents=True, exist_ok=True)
 
-        # Check if home is writable for other caches
+        # Matplotlib/fontconfig caches - always redirect on HPC
+        # Even with a writable home, ~/.cache/matplotlib/tex.cache often has
+        # permission issues on compute nodes (shared filesystems, quotas).
+        os.environ.setdefault("MPLCONFIGDIR", f"{cache_base}/.matplotlib")
+        os.environ.setdefault("FONTCONFIG_CACHE", f"{cache_base}/.fontconfig")
+        Path(os.environ["MPLCONFIGDIR"]).mkdir(parents=True, exist_ok=True)
+        Path(os.environ["FONTCONFIG_CACHE"]).mkdir(parents=True, exist_ok=True)
+
+        # XDG cache only if home is not writable
         home = os.path.expanduser("~")
         home_writable = os.access(home, os.W_OK)
-
-        # Other caches only if home is not writable
         if not home_writable:
-            os.environ.setdefault("MPLCONFIGDIR", f"{cache_base}/.matplotlib")
-            os.environ.setdefault("FONTCONFIG_CACHE", f"{cache_base}/.fontconfig")
             os.environ.setdefault("XDG_CACHE_HOME", f"{cache_base}/.cache")
-
-            for env_var in [
-                "MPLCONFIGDIR",
-                "FONTCONFIG_CACHE",
-                "XDG_CACHE_HOME",
-            ]:
-                Path(os.environ[env_var]).mkdir(parents=True, exist_ok=True)
+            Path(os.environ["XDG_CACHE_HOME"]).mkdir(parents=True, exist_ok=True)
 
         # WandB configuration (offline by default for HPC)
         os.environ.setdefault("WANDB_MODE", "offline")

@@ -40,8 +40,34 @@ def setup_hpc_cache_dirs() -> None:
         os.environ[env_var] = cache_path
 
     _setup_cache_dir("TORCH_HOME", "torch_cache")
+    _setup_cache_dir("HF_HOME", "hf_cache")
+    # Force offline mode when home is not writable (HPC compute nodes)
+    home = os.path.expanduser("~")
+    if not os.access(home, os.W_OK):
+        os.environ.setdefault("HF_HUB_OFFLINE", "1")
     _setup_cache_dir("MPLCONFIGDIR", "matplotlib")
     _setup_cache_dir("FONTCONFIG_CACHE", "fontconfig")
+
+    # For matplotlib/fontconfig, also set up even when home IS writable
+    # but we're on HPC (detected by scheduler env vars), because
+    # ~/.cache/matplotlib/tex.cache often has permission issues on compute nodes.
+    hpc_indicators = [
+        "SLURM_JOB_ID",
+        "PBS_JOBID",
+        "LSB_JOBID",
+        "SGE_TASK_ID",
+        "COBALT_JOBID",
+    ]
+    if any(var in os.environ for var in hpc_indicators):
+        for env_var, subdir in [
+            ("MPLCONFIGDIR", "matplotlib"),
+            ("FONTCONFIG_CACHE", "fontconfig"),
+        ]:
+            if env_var not in os.environ:
+                cache_path = os.path.join(os.getcwd(), f".{subdir}")
+                os.makedirs(cache_path, exist_ok=True)
+                os.environ[env_var] = cache_path
+
     _setup_cache_dir("XDG_DATA_HOME", "local/share")
     _setup_cache_dir("XDG_STATE_HOME", "local/state")
     _setup_cache_dir("XDG_CACHE_HOME", "cache")
