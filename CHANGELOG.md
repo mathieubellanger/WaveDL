@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **DDP**: All epoch-based schedulers (cosine, step, exponential, etc.) now step only on rank 0 with LR broadcast — previously only ReduceLROnPlateau was guarded, causing cosine `T_max` to be consumed N× faster with N GPUs
+- **Tests**: Scheduler float comparisons use `pytest.approx()` instead of exact `==` (fixes 2 test failures on Windows due to platform-specific floating-point rounding)
+
 ## [1.8.0] - 2026-02-23
 
 ### Added

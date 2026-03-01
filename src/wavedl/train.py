@@ -1227,7 +1227,7 @@ def main():
         scheduler = accelerator.prepare(scheduler)
     else:
         # EPOCH-BASED SCHEDULER (plateau, cosine, step, etc.)
-        # No batch count dependency - create scheduler before prepare
+        # Create scheduler before prepare (no batch count dependency)
         scheduler = get_scheduler(
             name=args.scheduler,
             optimizer=optimizer,
@@ -1242,21 +1242,14 @@ def main():
             warmup_epochs=args.warmup_epochs,
         )
 
-        # For ReduceLROnPlateau: DON'T include scheduler in accelerator.prepare()
-        # because accelerator wraps scheduler.step() to sync across processes,
-        # which defeats our rank-0-only stepping for correct patience counting.
-        # Other schedulers are safe to prepare (no internal state affected by multi-call).
-        if args.scheduler == "plateau":
-            model, optimizer, train_dl, val_dl = accelerator.prepare(
-                model, optimizer, train_dl, val_dl
-            )
-            # Scheduler stays unwrapped - we handle sync manually in training loop
-            # But register it for checkpointing so state is saved/loaded on resume
-            accelerator.register_for_checkpointing(scheduler)
-        else:
-            model, optimizer, train_dl, val_dl, scheduler = accelerator.prepare(
-                model, optimizer, train_dl, val_dl, scheduler
-            )
+        # DON'T include scheduler in accelerator.prepare() for any epoch-based
+        # scheduler. We handle stepping on rank 0 only, then broadcast LR.
+        # This prevents Accelerate's wrapper from interfering with step counts.
+        model, optimizer, train_dl, val_dl = accelerator.prepare(
+            model, optimizer, train_dl, val_dl
+        )
+        # Register scheduler for checkpointing so state is saved/loaded on resume
+        accelerator.register_for_checkpointing(scheduler)
 
     # ==========================================================================
     # AUTO-RESUME / RESUME FROM CHECKPOINT
@@ -1659,34 +1652,34 @@ def main():
                     )
 
             # Learning rate scheduling (epoch-based schedulers only)
-            # NOTE: For ReduceLROnPlateau with DDP, we must step only on main process
-            # to avoid patience counter being incremented by all GPU processes.
-            # Then we sync the new LR to all processes to keep them consistent.
+            # NOTE: All epoch-based schedulers must step only on main process
+            # in DDP mode. Otherwise, each GPU process calls scheduler.step(),
+            # consuming T_max N× faster (e.g., 4× with 4 GPUs).
+            # After stepping on rank 0, we broadcast the updated LR to all.
             if not scheduler_step_per_batch:
-                if args.scheduler == "plateau":
-                    # Step only on main process to avoid multi-GPU patience bug
-                    if accelerator.is_main_process:
+                if accelerator.is_main_process:
+                    if args.scheduler == "plateau":
                         scheduler.step(avg_val_loss)
+                    else:
+                        scheduler.step()
 
-                    # Sync LR across all processes after main process updates it
-                    accelerator.wait_for_everyone()
+                # Sync LR across all processes after main process updates it
+                accelerator.wait_for_everyone()
 
-                    # Broadcast per-group LRs from rank 0 to all processes
-                    # (preserves multi-group ratios, e.g., Swin backbone 0.1× vs head 1×)
-                    if dist.is_initialized():
-                        n_groups = len(optimizer.param_groups)
-                        lr_tensor = torch.zeros(
-                            n_groups, device=accelerator.device, dtype=torch.float32
-                        )
-                        if accelerator.is_main_process:
-                            for i, pg in enumerate(optimizer.param_groups):
-                                lr_tensor[i] = pg["lr"]
-                        dist.broadcast(lr_tensor, src=0)
-                        if not accelerator.is_main_process:
-                            for i, pg in enumerate(optimizer.param_groups):
-                                pg["lr"] = lr_tensor[i].item()
-                else:
-                    scheduler.step()
+                # Broadcast per-group LRs from rank 0 to all processes
+                # (preserves multi-group ratios, e.g., Swin backbone 0.1× vs head 1×)
+                if dist.is_initialized():
+                    n_groups = len(optimizer.param_groups)
+                    lr_tensor = torch.zeros(
+                        n_groups, device=accelerator.device, dtype=torch.float32
+                    )
+                    if accelerator.is_main_process:
+                        for i, pg in enumerate(optimizer.param_groups):
+                            lr_tensor[i] = pg["lr"]
+                    dist.broadcast(lr_tensor, src=0)
+                    if not accelerator.is_main_process:
+                        for i, pg in enumerate(optimizer.param_groups):
+                            pg["lr"] = lr_tensor[i].item()
 
             # DDP-safe early stopping
             should_stop = (

@@ -167,12 +167,12 @@ class TestSchedulerStep:
         for _ in range(4):
             scheduler.step()
         lr_before = optimizer.param_groups[0]["lr"]
-        assert lr_before == initial_lr
+        assert lr_before == pytest.approx(initial_lr)
 
         # After step boundary
         scheduler.step()
         lr_after = optimizer.param_groups[0]["lr"]
-        assert lr_after == initial_lr * 0.5
+        assert lr_after == pytest.approx(initial_lr * 0.5)
 
     def test_plateau_requires_metric(self, optimizer):
         """ReduceLROnPlateau requires metric for step."""
@@ -182,7 +182,7 @@ class TestSchedulerStep:
         scheduler.step(0.5)  # Pass validation loss
 
         # LR should remain same initially
-        assert optimizer.param_groups[0]["lr"] == 1e-3
+        assert optimizer.param_groups[0]["lr"] == pytest.approx(1e-3)
 
     def test_linear_warmup_increases_lr(self, optimizer):
         """Linear warmup should increase LR towards target."""
