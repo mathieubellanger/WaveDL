@@ -263,6 +263,7 @@ def validate_config(
         "patience",
         "weight_decay",
         "grad_clip",
+        "grad_accum_steps",
         # Loss
         "loss",
         "huber_delta",
@@ -348,6 +349,7 @@ def create_default_config() -> dict[str, Any]:
         "patience": 20,
         "weight_decay": 1e-4,
         "grad_clip": 1.0,
+        "grad_accum_steps": 1,
         # Training components
         "loss": "mse",
         "optimizer": "adamw",
