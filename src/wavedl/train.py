@@ -1397,7 +1397,7 @@ def main():
                     optimizer.zero_grad(set_to_none=True)  # Faster than zero_grad()
 
                     # Per-batch LR scheduling (e.g., OneCycleLR)
-                    if scheduler_step_per_batch:
+                    if scheduler_step_per_batch and accelerator.sync_gradients:
                         scheduler.step()
 
                     # Accumulate as tensors to avoid .item() sync per batch
