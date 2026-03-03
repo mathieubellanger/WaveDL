@@ -236,6 +236,7 @@ def validate_config(
         "batch_size": (1, 10000, "Batch size should be positive"),
         "patience": (1, 1000, "Patience should be positive"),
         "cv": (0, 100, "CV folds should be 0-100"),
+        "grad_accum_steps": (1, 256, "Gradient accumulation steps should be 1-256"),
     }
 
     for key, (min_val, max_val, msg) in numeric_checks.items():
