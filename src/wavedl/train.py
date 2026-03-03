@@ -994,6 +994,11 @@ def main():
     # SYSTEM INITIALIZATION
     # ==========================================================================
     # Initialize Accelerator for DDP and mixed precision
+    if args.grad_accum_steps < 1:
+        raise ValueError(
+            f"--grad_accum_steps must be >= 1, got {args.grad_accum_steps}"
+        )
+
     accelerator = Accelerator(
         mixed_precision=args.precision,
         gradient_accumulation_steps=args.grad_accum_steps,
