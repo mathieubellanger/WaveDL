@@ -545,6 +545,7 @@ print(f'\n✓ All {len(urls) + len(timm_models)} pretrained weight files cached!
 | `--patience` | `20` | Early stopping patience |
 | `--weight_decay` | `1e-4` | AdamW regularization |
 | `--grad_clip` | `1.0` | Gradient clipping |
+| `--grad_accum_steps` | `1` | Gradient accumulation steps (simulate larger batch sizes) |
 
 </details>
 

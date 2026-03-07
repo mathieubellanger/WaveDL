@@ -59,6 +59,27 @@ class TestTrainParseArgs:
             assert args.lr == 1e-3
             assert args.optimizer == "adamw"
             assert args.scheduler == "plateau"
+            assert args.grad_accum_steps == 1
+
+    def test_grad_accum_steps_custom_value(self):
+        """Test that --grad_accum_steps parses a custom value."""
+        from wavedl.train import parse_args
+
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "wavedl-train",
+                "--model",
+                "cnn",
+                "--data_path",
+                "/fake/path.npz",
+                "--grad_accum_steps",
+                "8",
+            ],
+        ):
+            args, _ = parse_args()
+            assert args.grad_accum_steps == 8
 
     def test_model_argument(self):
         """Test that model argument is parsed correctly."""

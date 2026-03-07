@@ -260,6 +260,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--grad_clip", type=float, default=1.0, help="Gradient clipping norm"
     )
+    parser.add_argument(
+        "--grad_accum_steps",
+        type=int,
+        default=1,
+        help="Gradient accumulation steps. Effective batch = batch_size x grad_accum_steps x num_gpus",
+    )
 
     # Loss Function
     parser.add_argument(
@@ -988,8 +994,14 @@ def main():
     # SYSTEM INITIALIZATION
     # ==========================================================================
     # Initialize Accelerator for DDP and mixed precision
+    if args.grad_accum_steps < 1:
+        raise ValueError(
+            f"--grad_accum_steps must be >= 1, got {args.grad_accum_steps}"
+        )
+
     accelerator = Accelerator(
         mixed_precision=args.precision,
+        gradient_accumulation_steps=args.grad_accum_steps,
         log_with="wandb" if args.wandb and WANDB_AVAILABLE else None,
     )
     set_seed(args.seed)
@@ -1041,6 +1053,14 @@ def main():
             f"   Loss: {args.loss} | Optimizer: {args.optimizer} | Scheduler: {args.scheduler}"
         )
         logger.info(f"   Early Stopping Patience: {args.patience} epochs")
+        if args.grad_accum_steps > 1:
+            effective_bs = (
+                args.batch_size * args.grad_accum_steps * accelerator.num_processes
+            )
+            logger.info(
+                f"   Gradient Accumulation: {args.grad_accum_steps} steps "
+                f"(effective batch size: {effective_bs})"
+            )
         if args.save_every > 0:
             logger.info(f"   Periodic Checkpointing: Every {args.save_every} epochs")
         if args.resume:
@@ -1382,7 +1402,7 @@ def main():
                     optimizer.zero_grad(set_to_none=True)  # Faster than zero_grad()
 
                     # Per-batch LR scheduling (e.g., OneCycleLR)
-                    if scheduler_step_per_batch:
+                    if scheduler_step_per_batch and accelerator.sync_gradients:
                         scheduler.step()
 
                     # Accumulate as tensors to avoid .item() sync per batch

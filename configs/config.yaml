@@ -65,6 +65,7 @@ epochs: 1000                  # Maximum training epochs
 patience: 20                  # Early stopping patience (epochs without improvement)
 weight_decay: 0.0001          # L2 regularization (AdamW)
 grad_clip: 1.0                # Gradient clipping max norm
+grad_accum_steps: 1            # Gradient accumulation steps (effective batch = batch_size x steps x GPUs)
 
 # =============================================================================
 # LOSS FUNCTION

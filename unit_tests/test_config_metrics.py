@@ -188,6 +188,41 @@ class TestValidateConfig:
         warnings = validate_config(config)
         assert len(warnings) == 1
 
+    def test_grad_accum_steps_zero_produces_warning(self):
+        """Test that grad_accum_steps=0 produces warning."""
+        from wavedl.utils.config import validate_config
+
+        config = {"grad_accum_steps": 0}
+        warnings = validate_config(config)
+        assert len(warnings) == 1
+        assert "Gradient accumulation" in warnings[0]
+
+    def test_grad_accum_steps_negative_produces_warning(self):
+        """Test that negative grad_accum_steps produces warning."""
+        from wavedl.utils.config import validate_config
+
+        config = {"grad_accum_steps": -1}
+        warnings = validate_config(config)
+        assert len(warnings) == 1
+        assert "Gradient accumulation" in warnings[0]
+
+    def test_grad_accum_steps_valid_no_warning(self):
+        """Test that valid grad_accum_steps produces no warning."""
+        from wavedl.utils.config import validate_config
+
+        config = {"grad_accum_steps": 4}
+        warnings = validate_config(config)
+        assert warnings == []
+
+    def test_grad_accum_steps_above_max_produces_warning(self):
+        """Test that grad_accum_steps above 256 produces warning."""
+        from wavedl.utils.config import validate_config
+
+        config = {"grad_accum_steps": 999}
+        warnings = validate_config(config)
+        assert len(warnings) == 1
+        assert "Gradient accumulation" in warnings[0]
+
 
 class TestCreateDefaultConfig:
     """Tests for default config creation."""
@@ -284,6 +319,66 @@ class TestMergeConfigWithArgs:
         merged = merge_config_with_args(config, args, ignore_unknown=True)
         assert merged.model == "cnn"
         assert not hasattr(merged, "unknown_key")
+
+
+class TestGradAccumStepsYAMLIntegration:
+    """Integration tests for grad_accum_steps loaded from YAML config."""
+
+    def test_yaml_grad_accum_steps_applied(self):
+        """Test that grad_accum_steps from YAML is applied to args."""
+        from wavedl.utils.config import load_config, merge_config_with_args
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
+            f.write("model: cnn\ngrad_accum_steps: 4\n")
+            f.flush()
+
+            try:
+                config = load_config(f.name)
+                args = argparse.Namespace(model="cnn", grad_accum_steps=1)
+                merged = merge_config_with_args(config, args)
+                assert merged.grad_accum_steps == 4
+            finally:
+                try:
+                    os.unlink(f.name)
+                except PermissionError:
+                    pass
+
+    def test_yaml_grad_accum_steps_validated(self):
+        """Test that invalid grad_accum_steps in YAML produces warning."""
+        from wavedl.utils.config import load_config, validate_config
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
+            f.write("model: cnn\ngrad_accum_steps: 0\n")
+            f.flush()
+
+            try:
+                config = load_config(f.name)
+                warnings = validate_config(config)
+                assert any("Gradient accumulation" in w for w in warnings)
+            finally:
+                try:
+                    os.unlink(f.name)
+                except PermissionError:
+                    pass
+
+    def test_yaml_grad_accum_steps_no_spurious_unknown_key_warning(self):
+        """Test that grad_accum_steps in YAML does not produce unknown key warning."""
+        from wavedl.utils.config import load_config, validate_config
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
+            f.write("model: cnn\ngrad_accum_steps: 4\n")
+            f.flush()
+
+            try:
+                config = load_config(f.name)
+                warnings = validate_config(config)
+                unknown_warnings = [w for w in warnings if "Unknown config key" in w]
+                assert unknown_warnings == []
+            finally:
+                try:
+                    os.unlink(f.name)
+                except PermissionError:
+                    pass
 
 
 # ==============================================================================

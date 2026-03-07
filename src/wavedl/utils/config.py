@@ -236,6 +236,7 @@ def validate_config(
         "batch_size": (1, 10000, "Batch size should be positive"),
         "patience": (1, 1000, "Patience should be positive"),
         "cv": (0, 100, "CV folds should be 0-100"),
+        "grad_accum_steps": (1, 256, "Gradient accumulation steps should be 1-256"),
     }
 
     for key, (min_val, max_val, msg) in numeric_checks.items():
@@ -263,6 +264,7 @@ def validate_config(
         "patience",
         "weight_decay",
         "grad_clip",
+        "grad_accum_steps",
         # Loss
         "loss",
         "huber_delta",
@@ -348,6 +350,7 @@ def create_default_config() -> dict[str, Any]:
         "patience": 20,
         "weight_decay": 1e-4,
         "grad_clip": 1.0,
+        "grad_accum_steps": 1,
         # Training components
         "loss": "mse",
         "optimizer": "adamw",
