@@ -166,7 +166,7 @@ def get_optimizer_with_param_groups(
         lr: Learning rate
         weight_decay: Weight decay for applicable parameters
         no_decay_keywords: Keywords to identify no-decay parameters
-                          Default: ['bias', 'norm', 'bn', 'ln']
+                          Default: ['bias', 'norm', 'bn', 'ln', 'gamma', 'beta']
         **kwargs: Additional optimizer arguments
 
     Returns:
@@ -178,7 +178,7 @@ def get_optimizer_with_param_groups(
         ... )
     """
     if no_decay_keywords is None:
-        no_decay_keywords = ["bias", "norm", "bn", "ln"]
+        no_decay_keywords = ["bias", "norm", "bn", "ln", "gamma", "beta"]
 
     decay_params = []
     no_decay_params = []
