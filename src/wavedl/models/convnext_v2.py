@@ -171,8 +171,8 @@ class ConvNeXtV2Base(BaseModel):
         out_size: int,
         depths: list[int],
         dims: list[int],
-        drop_path_rate: float = 0.0,
-        dropout_rate: float = 0.3,
+        drop_path_rate: float = 0.1,
+        dropout_rate: float = 0.1,
         **kwargs,
     ):
         super().__init__(in_shape, out_size)
@@ -279,7 +279,7 @@ class ConvNeXtV2Base(BaseModel):
             "depths": [3, 3, 9, 3],
             "dims": [96, 192, 384, 768],
             "drop_path_rate": 0.1,
-            "dropout_rate": 0.3,
+            "dropout_rate": 0.1,
         }
 
 

@@ -7,9 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Training**: `--grad_accum_steps` flag for gradient accumulation across mini-batches
+
+### Changed
+- **ConvNeXt V2**: Default `dropout_rate` 0.3 → 0.1, `drop_path_rate` 0.0 → 0.1 (aligns with original paper)
+
 ### Fixed
-- **DDP**: All epoch-based schedulers (cosine, step, exponential, etc.) now step only on rank 0 with LR broadcast — previously only ReduceLROnPlateau was guarded, causing cosine `T_max` to be consumed N× faster with N GPUs
-- **Tests**: Scheduler float comparisons use `pytest.approx()` instead of exact `==` (fixes 2 test failures on Windows due to platform-specific floating-point rounding)
+- **DDP**: Epoch-based schedulers now step only on rank 0 with LR broadcast (cosine `T_max` was consumed N× faster with N GPUs)
+- **Training**: Per-batch schedulers correctly skipped during gradient accumulation sub-steps
+- **Training**: Weight decay exclusion extended to `gamma`/`beta` parameters (LayerScale, GRN)
 
 ## [1.8.0] - 2026-02-23
 

@@ -13,7 +13,9 @@
 
 # Unpublished models
 src/wavedl/models/ratenet.py
+src/wavedl/models/ratenet_v2.py
 configs/ratenet.yaml
+configs/ratenet_v2.yaml
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

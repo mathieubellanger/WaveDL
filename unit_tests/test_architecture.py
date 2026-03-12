@@ -69,6 +69,7 @@ MODEL_DIMS = {
     "efficientvit": [2],
     "unireplknet": [1, 2],
     "ratenet": [2],
+    "ratenet_v2": [2],
     # v1.8+ models
     "wavenet": [1],
     "s4d": [1],
@@ -110,7 +111,7 @@ def get_test_config(model_name: str, dim: int | None = None) -> tuple:
     large_input_models = ["maxvit", "fastvit", "caformer", "poolformer", "efficientvit"]
     needs_large_input = any(model_lower.startswith(p) for p in large_input_models)
 
-    # RATENet uses 7 MaxPool2d(2) blocks: needs >= 256x256 (256/2^7=2)
+    # RATENet uses 6-7 MaxPool2d(2) blocks: needs >= 128x128 (256 used for safety)
     needs_ratenet_input = model_lower.startswith("ratenet")
 
     if dim == 1:
