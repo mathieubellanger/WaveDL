@@ -59,13 +59,20 @@ __all__ = [
 
 class ConvNeXtV2Block(nn.Module):
     """
-    ConvNeXt V2 Block with GRN instead of LayerScale.
+    ConvNeXt V2 Block with GRN and residual scale.
 
     Architecture:
-        Input → DwConv → LayerNorm → Linear → GELU → GRN → Linear → Residual
+        Input → DwConv → LayerNorm → Linear → GELU → GRN → Linear
+              → ResScale → Residual
 
-    The GRN layer is the key difference from V1, placed after the
-    dimension-expansion in the MLP, replacing LayerScale.
+    GRN is the key V2 innovation for feature normalization (replaces
+    LayerScale's role as regularizer). The residual scale (init=1e-6)
+    stabilizes gradient flow for from-scratch training by suppressing
+    the residual branch near init — the same role LayerScale plays
+    in V1, but decoupled from the normalization that GRN provides.
+
+    Note: The official ConvNeXt V2 omits this scale because it assumes
+    MAE pretraining. For from-scratch regression, it is essential.
     """
 
     def __init__(
@@ -74,6 +81,7 @@ class ConvNeXtV2Block(nn.Module):
         spatial_dim: int,
         drop_path: float = 0.0,
         mlp_ratio: float = 4.0,
+        res_scale_init: float = 1e-6,
     ):
         super().__init__()
         self.spatial_dim = spatial_dim
@@ -97,6 +105,13 @@ class ConvNeXtV2Block(nn.Module):
         self.act = nn.GELU()
         self.grn = GRN(hidden_dim)  # GRN after expansion (key V2 change)
         self.pwconv2 = nn.Linear(hidden_dim, dim)  # Projection
+
+        # Residual scale: suppresses residual branch at init so blocks
+        # start as identity, preventing gradient explosion in deep networks.
+        # Serves the same init-stability role as V1's LayerScale.
+        self.res_scale = nn.Parameter(
+            res_scale_init * torch.ones(dim), requires_grad=True
+        )
 
         # Stochastic depth
         self.drop_path = DropPath(drop_path) if drop_path > 0.0 else nn.Identity()
@@ -139,6 +154,9 @@ class ConvNeXtV2Block(nn.Module):
             x = x.permute(0, 2, 3, 4, 1)
 
         x = self.pwconv2(x)
+
+        # Residual scale (like LayerScale, suppresses branch at init)
+        x = self.res_scale * x
 
         # Move back to channels-first
         if self.spatial_dim == 1:
@@ -256,14 +274,6 @@ class ConvNeXtV2Base(BaseModel):
             elif isinstance(m, nn.LayerNorm):
                 nn.init.ones_(m.weight)
                 nn.init.zeros_(m.bias)
-
-        # Zero-init output projections so each block starts as identity
-        # (equivalent to LayerScale gamma=0 in V1 for from-scratch training)
-        for stage in self.stages:
-            for block in stage:
-                if isinstance(block, ConvNeXtV2Block):
-                    nn.init.zeros_(block.pwconv2.weight)
-                    nn.init.zeros_(block.pwconv2.bias)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """

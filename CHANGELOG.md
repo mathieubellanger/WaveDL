@@ -14,7 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **DDP**: Epoch-based schedulers now step only on rank 0 with LR broadcast (cosine `T_max` was consumed N× faster with N GPUs)
 - **Training**: Per-batch schedulers correctly skipped during gradient accumulation sub-steps
 - **Training**: Weight decay exclusion extended to `gamma`/`beta` parameters (LayerScale, GRN)
-- **ConvNeXt V2**: Zero-init `pwconv2` and tuned defaults (`dropout` 0.3→0.1, `drop_path` 0→0.1) — blocks lacked identity init for from-scratch training (V1's LayerScale suppressed the residual branch; V2's GRN does not)
+- **ConvNeXt V2**: Added `res_scale` (init=1e-6) to suppress residual branch at init, tuned defaults (`dropout` 0.3→0.1, `drop_path` 0→0.1) — from-scratch training exploded (grad norm ~10⁸) because V2 lacks V1's LayerScale to dampen both forward output and backward gradient
 
 ## [1.8.0] - 2026-02-23
 
