@@ -69,7 +69,6 @@ MODEL_DIMS = {
     "efficientvit": [2],
     "unireplknet": [1, 2],
     "ratenet": [2],
-    "ratenet_v2": [2],
     # v1.8+ models
     "wavenet": [1],
     "s4d": [1],

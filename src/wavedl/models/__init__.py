@@ -79,10 +79,9 @@ from .vit import ViTBase_, ViTSmall, ViTTiny
 from .wavenet import WaveNet, WaveNetLarge, WaveNetSmall
 
 
-# Optional RATENet (unpublished, may be gitignored)
+# RATENet (unpublished, may be gitignored)
 try:
     from .ratenet import RATENet
-    from .ratenet_v2 import RATENetV2
 
     _HAS_RATENET = True
 except ImportError:
@@ -200,4 +199,4 @@ if _HAS_TIMM_MODELS:
 
 # Add RATENet to __all__ if available (unpublished)
 if _HAS_RATENET:
-    __all__.extend(["RATENet", "RATENetV2"])
+    __all__.extend(["RATENet"])
