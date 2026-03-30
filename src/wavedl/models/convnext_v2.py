@@ -236,7 +236,18 @@ class ConvNeXtV2Base(BaseModel):
         self._init_weights()
 
     def _init_weights(self):
-        """Initialize weights with truncated normal."""
+        """Initialize weights with truncated normal.
+
+        Zero-initializes pwconv2 (output projection) in each block so that
+        blocks start as identity at init. This is analogous to ConvNeXt V1's
+        LayerScale (gamma=1e-6) which suppresses the residual branch near
+        init. Without this, the residual branch has magnitude ~0.86/block,
+        causing gradient explosion in deep networks trained from scratch.
+
+        Note: The official ConvNeXt V2 was designed for MAE pretraining where
+        weights are already trained, so this wasn't needed there. For
+        from-scratch training, this zero-init is essential.
+        """
         for m in self.modules():
             if isinstance(m, (nn.Conv1d, nn.Conv2d, nn.Conv3d, nn.Linear)):
                 nn.init.trunc_normal_(m.weight, std=0.02)
@@ -245,6 +256,14 @@ class ConvNeXtV2Base(BaseModel):
             elif isinstance(m, nn.LayerNorm):
                 nn.init.ones_(m.weight)
                 nn.init.zeros_(m.bias)
+
+        # Zero-init output projections so each block starts as identity
+        # (equivalent to LayerScale gamma=0 in V1 for from-scratch training)
+        for stage in self.stages:
+            for block in stage:
+                if isinstance(block, ConvNeXtV2Block):
+                    nn.init.zeros_(block.pwconv2.weight)
+                    nn.init.zeros_(block.pwconv2.bias)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """

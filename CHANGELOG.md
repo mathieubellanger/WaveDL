@@ -10,13 +10,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - **Training**: `--grad_accum_steps` flag for gradient accumulation across mini-batches
 
-### Changed
-- **ConvNeXt V2**: Default `dropout_rate` 0.3 → 0.1, `drop_path_rate` 0.0 → 0.1 (aligns with original paper)
-
 ### Fixed
 - **DDP**: Epoch-based schedulers now step only on rank 0 with LR broadcast (cosine `T_max` was consumed N× faster with N GPUs)
 - **Training**: Per-batch schedulers correctly skipped during gradient accumulation sub-steps
 - **Training**: Weight decay exclusion extended to `gamma`/`beta` parameters (LayerScale, GRN)
+- **ConvNeXt V2**: Zero-init `pwconv2` and tuned defaults (`dropout` 0.3→0.1, `drop_path` 0→0.1) — blocks lacked identity init for from-scratch training (V1's LayerScale suppressed the residual branch; V2's GRN does not)
 
 ## [1.8.0] - 2026-02-23
 
