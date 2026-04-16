@@ -14,7 +14,7 @@ Normalization (GRN), which enhances inter-channel feature competition.
     - convnext_v2_tiny: 28M params, depths [3,3,9,3], dims [96,192,384,768]
     - convnext_v2_small: 50M params, depths [3,3,27,3], dims [96,192,384,768]
     - convnext_v2_base: 89M params, depths [3,3,27,3], dims [128,256,512,1024]
-    - convnext_v2_tiny_pretrained: 2D only, ImageNet weights
+    - convnext_v2_tiny_pretrained: 2D only, ImageNet weights (via timm)
 
 **Supports**: 1D, 2D, 3D inputs
 
@@ -199,6 +199,18 @@ class ConvNeXtV2Base(BaseModel):
         self.depths = depths
         self.dims = dims
 
+        # Validate minimum spatial size:
+        # stem stride-4 × (len(depths)-1) stride-2 downsamplers
+        min_size = 4 * (2 ** (len(depths) - 1))
+        for i, s in enumerate(in_shape):
+            if s < min_size:
+                raise ValueError(
+                    f"ConvNeXtV2 requires each spatial axis >= {min_size}, "
+                    f"but axis {i} has size {s}. "
+                    f"(stem stride 4 x {len(depths) - 1} stride-2 "
+                    f"downsamplers = {min_size}x)"
+                )
+
         Conv = get_conv_layer(self.dim)
         Pool = get_pool_layer(self.dim)
 
@@ -256,15 +268,9 @@ class ConvNeXtV2Base(BaseModel):
     def _init_weights(self):
         """Initialize weights with truncated normal.
 
-        Zero-initializes pwconv2 (output projection) in each block so that
-        blocks start as identity at init. This is analogous to ConvNeXt V1's
-        LayerScale (gamma=1e-6) which suppresses the residual branch near
-        init. Without this, the residual branch has magnitude ~0.86/block,
-        causing gradient explosion in deep networks trained from scratch.
-
-        Note: The official ConvNeXt V2 was designed for MAE pretraining where
-        weights are already trained, so this wasn't needed there. For
-        from-scratch training, this zero-init is essential.
+        All conv and linear layers use trunc-normal(std=0.02). Residual branch
+        suppression at init is handled by res_scale (init=1e-6), not by
+        zero-initializing any specific layer.
         """
         for m in self.modules():
             if isinstance(m, (nn.Conv1d, nn.Conv2d, nn.Conv3d, nn.Linear)):
@@ -398,7 +404,7 @@ class ConvNeXtV2BaseLarge(ConvNeXtV2Base):
 
 
 # =============================================================================
-# PRETRAINED VARIANT (2D ONLY)
+# PRETRAINED VARIANT (2D ONLY, via timm)
 # =============================================================================
 
 
@@ -407,15 +413,18 @@ class ConvNeXtV2TinyPretrained(BaseModel):
     """
     ConvNeXt V2 Tiny with ImageNet pretrained weights (2D only).
 
-    Uses torchvision's ConvNeXt V2 implementation with:
+    Uses timm's ConvNeXt V2 implementation (FCMAE-pretrained, ImageNet
+    fine-tuned) with genuine V2 architecture including GRN layers.
+
     - Adapted input layer for single-channel input
-    - Replaced classifier for regression
+    - Custom regression head replaces classifier
 
     Args:
         in_shape: (H, W) input shape (2D only)
         out_size: Number of regression targets
         pretrained: Whether to load pretrained weights
         freeze_backbone: Whether to freeze backbone for fine-tuning
+        dropout_rate: Dropout rate for regression head
     """
 
     def __init__(
@@ -438,60 +447,67 @@ class ConvNeXtV2TinyPretrained(BaseModel):
         self.pretrained = pretrained
         self.freeze_backbone = freeze_backbone
 
-        # Try to load from torchvision (if available)
+        # Load real ConvNeXt V2 from timm
         try:
-            from torchvision.models import (
-                ConvNeXt_Tiny_Weights,
-                convnext_tiny,
+            import timm
+
+            self.backbone = timm.create_model(
+                "convnextv2_tiny",
+                pretrained=pretrained,
+                num_classes=0,  # Remove classifier
             )
 
-            weights = ConvNeXt_Tiny_Weights.IMAGENET1K_V1 if pretrained else None
-            self.backbone = convnext_tiny(weights=weights)
-
-            # Note: torchvision's ConvNeXt is V1, not V2
-            # For true V2, we'd need custom implementation or timm
-            # This is a fallback using V1 architecture
+            # Get feature dimension
+            with torch.no_grad():
+                self.backbone.eval()
+                dummy = torch.zeros(1, 3, *in_shape)
+                features = self.backbone(dummy)
+                in_features = features.shape[-1]
+                self.backbone.train()
 
         except ImportError:
             raise ImportError(
-                "torchvision is required for pretrained ConvNeXt. "
-                "Install with: pip install torchvision"
+                "timm >= 0.9.0 is required for pretrained ConvNeXt V2. "
+                "Install with: pip install timm>=0.9.0"
+            )
+        except Exception as e:
+            raise RuntimeError(
+                f"Failed to load ConvNeXt V2 model 'convnextv2_tiny': {e}"
             )
 
-        # Adapt input layer (3 channels -> 1 channel)
+        # Adapt input channels (3 -> 1)
         self._adapt_input_channels()
 
-        # Replace classifier with regression head
-        # Keep the LayerNorm2d (idx 0) and Flatten (idx 1), only replace Linear (idx 2)
-        in_features = self.backbone.classifier[2].in_features
-        new_head = build_regression_head(in_features, out_size, dropout_rate)
-
-        # Build new classifier keeping LayerNorm2d and Flatten
-        self.backbone.classifier = nn.Sequential(
-            self.backbone.classifier[0],  # LayerNorm2d
-            self.backbone.classifier[1],  # Flatten
-            new_head,  # Our regression head
-        )
+        # Regression head
+        self.head = build_regression_head(in_features, out_size, dropout_rate)
 
         if freeze_backbone:
             self._freeze_backbone()
 
     def _adapt_input_channels(self):
         """Adapt first conv layer for single-channel input."""
-        from wavedl.models._pretrained_utils import adapt_first_conv_for_single_channel
+        from wavedl.models._pretrained_utils import find_and_adapt_input_convs
 
-        adapt_first_conv_for_single_channel(
-            self.backbone, "features.0.0", pretrained=self.pretrained
+        adapted_count = find_and_adapt_input_convs(
+            self.backbone, pretrained=self.pretrained, adapt_all=False
         )
 
+        if adapted_count == 0:
+            import warnings
+
+            warnings.warn(
+                "Could not adapt ConvNeXt V2 input channels. Model may fail.",
+                stacklevel=2,
+            )
+
     def _freeze_backbone(self):
-        """Freeze all backbone parameters except classifier."""
-        for name, param in self.backbone.named_parameters():
-            if "classifier" not in name:
-                param.requires_grad = False
+        """Freeze backbone parameters."""
+        for param in self.backbone.parameters():
+            param.requires_grad = False
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return self.backbone(x)
+        features = self.backbone(x)
+        return self.head(features)
 
     def __repr__(self) -> str:
         return (

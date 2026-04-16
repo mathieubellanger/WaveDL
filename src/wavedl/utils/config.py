@@ -114,26 +114,27 @@ def merge_config_with_args(
         CLI arguments (non-default values) always override config values.
         This allows: `--config base.yaml --lr 5e-4` to use config but override LR.
     """
-    # Get parser defaults to detect which args were explicitly set by user
+    # Detect which args were explicitly passed on the command line.
+    # We cannot simply compare values against parser defaults because a user
+    # who explicitly passes the default (e.g., --workers -1) would be silently
+    # overwritten by YAML.  Instead, inspect sys.argv for the actual flags.
+    cli_overrides: set[str] = set()
     if parser is not None:
-        # Use public API to extract defaults (avoids private _actions attribute)
-        defaults = {}
-        for action in parser._option_string_actions.values():
-            if action.dest != "help":
-                defaults[action.dest] = parser.get_default(action.dest)
-    else:
-        # Fallback: reconstruct defaults from known patterns
-        # This works because argparse stores actual values, and we compare
-        defaults = {}
+        import sys
 
-    # Track which args were explicitly set on CLI (differ from defaults)
-    cli_overrides = set()
-    for key, value in vars(args).items():
-        if parser is not None:
-            if key in defaults and value != defaults[key]:
-                cli_overrides.add(key)
-        # Without parser, we can't reliably detect CLI overrides
-        # So we apply all config values (legacy behavior)
+        # Check both '--flag value' and '--flag=value' forms in sys.argv.
+        # The latter is a single token (e.g., '--workers=-1') so a plain
+        # set-membership check would miss it.
+        argv_tokens = sys.argv
+        for action in parser._option_string_actions.values():
+            if action.dest == "help":
+                continue
+            for flag in action.option_strings:
+                if any(
+                    tok == flag or tok.startswith(flag + "=") for tok in argv_tokens
+                ):
+                    cli_overrides.add(action.dest)
+                    break
 
     # Apply config values only where CLI didn't override
     for key, value in config.items():
@@ -198,14 +199,17 @@ def save_config(
 
 
 def validate_config(
-    config: dict[str, Any], known_keys: list[str] | None = None
+    config: dict[str, Any],
+    known_keys: list[str] | None = None,
+    parser: "argparse.ArgumentParser | None" = None,
 ) -> list[str]:
     """
     Validate configuration values against known options.
 
     Args:
         config: Configuration dictionary
-        known_keys: Optional list of valid keys (if None, uses defaults from parser args)
+        known_keys: Optional list of valid keys (if None, derives from parser or uses defaults)
+        parser: Optional ArgumentParser to derive valid keys from (most reliable)
 
     Returns:
         List of warning messages (empty if valid)
@@ -252,77 +256,88 @@ def validate_config(
                 warnings.append(f"{msg}: got {val}")
 
     # Check for unknown/unrecognized keys (helps catch typos)
-    # Default known keys based on common training arguments
-    default_known_keys = {
-        # Model
-        "model",
-        "import_modules",
-        # Hyperparameters
-        "batch_size",
-        "lr",
-        "epochs",
-        "patience",
-        "weight_decay",
-        "grad_clip",
-        "grad_accum_steps",
-        # Loss
-        "loss",
-        "huber_delta",
-        "loss_weights",
-        # Optimizer
-        "optimizer",
-        "momentum",
-        "nesterov",
-        "betas",
-        # Scheduler
-        "scheduler",
-        "scheduler_patience",
-        "min_lr",
-        "scheduler_factor",
-        "warmup_epochs",
-        "step_size",
-        "milestones",
-        # Data
-        "data_path",
-        "workers",
-        "seed",
-        "single_channel",
-        # Cross-validation
-        "cv",
-        "cv_stratify",
-        "cv_bins",
-        # Checkpointing
-        "resume",
-        "save_every",
-        "output_dir",
-        "fresh",
-        # Performance
-        "compile",
-        "precision",
-        "mixed_precision",
-        # Logging
-        "wandb",
-        "wandb_watch",
-        "project_name",
-        "run_name",
-        # Config
-        "config",
-        "list_models",
-        # Physical Constraints
-        "constraint",
-        "bounds",
-        "constraint_file",
-        "constraint_weight",
-        "constraint_reduction",
-        "positive",
-        "output_bounds",
-        "output_transform",
-        "output_formula",
-        # Metadata (internal)
-        "_metadata",
-    }
-
-    check_keys = set(known_keys) if known_keys else default_known_keys
+    # Priority: explicit known_keys > parser-derived > hardcoded fallback
+    if known_keys is not None:
+        check_keys = set(known_keys)
+    elif parser is not None:
+        # Derive from parser: always in sync, never lags behind new arguments
+        check_keys = {
+            action.dest for action in parser._actions if action.dest != "help"
+        }
+        # Also accept the raw flag names without leading dashes
+        # (e.g., YAML may use 'no_pretrained' or 'mixed_precision')
+        for action in parser._actions:
+            for opt in action.option_strings:
+                check_keys.add(opt.lstrip("-").replace("-", "_"))
+        check_keys.add("_metadata")  # Internal metadata key
+    else:
+        # Hardcoded fallback (used when neither parser nor known_keys provided)
+        check_keys = {
+            # Model
+            "model",
+            "import_modules",
+            "pretrained",
+            # Hyperparameters
+            "batch_size",
+            "lr",
+            "epochs",
+            "patience",
+            "weight_decay",
+            "grad_clip",
+            "grad_accum_steps",
+            # Loss
+            "loss",
+            "huber_delta",
+            "loss_weights",
+            # Optimizer
+            "optimizer",
+            "momentum",
+            "nesterov",
+            "betas",
+            # Scheduler
+            "scheduler",
+            "scheduler_patience",
+            "min_lr",
+            "scheduler_factor",
+            "warmup_epochs",
+            "step_size",
+            "milestones",
+            # Data
+            "data_path",
+            "workers",
+            "seed",
+            "deterministic",
+            "cache_validate",
+            "single_channel",
+            # Cross-validation
+            "cv",
+            "cv_stratify",
+            "cv_bins",
+            # Checkpointing
+            "resume",
+            "save_every",
+            "output_dir",
+            "fresh",
+            # Performance
+            "compile",
+            "precision",
+            "mixed_precision",
+            # Logging
+            "wandb",
+            "wandb_watch",
+            "project_name",
+            "run_name",
+            # Config
+            "config",
+            "list_models",
+            # Physical Constraints
+            "constraint",
+            "constraint_file",
+            "constraint_weight",
+            "constraint_reduction",
+            # Metadata (internal)
+            "_metadata",
+        }
 
     for key in config:
         if key not in check_keys:

@@ -461,7 +461,7 @@ def run_cross_validation(
         criterion = get_loss(loss_name)
         optimizer = get_optimizer(
             optimizer_name,
-            model.parameters(),
+            model.get_optimizer_groups(lr, weight_decay),
             lr=lr,
             weight_decay=weight_decay,
             betas=betas,

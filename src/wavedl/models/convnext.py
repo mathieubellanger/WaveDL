@@ -165,6 +165,18 @@ class ConvNeXtBase(BaseModel):
         self.dims = dims
         self.dropout_rate = dropout_rate
 
+        # Validate minimum spatial size:
+        # stem stride-4 × (len(depths)-1) stride-2 downsamplers
+        min_size = 4 * (2 ** (len(depths) - 1))
+        for i, s in enumerate(in_shape):
+            if s < min_size:
+                raise ValueError(
+                    f"ConvNeXt requires each spatial axis >= {min_size}, "
+                    f"but axis {i} has size {s}. "
+                    f"(stem stride 4 x {len(depths) - 1} stride-2 "
+                    f"downsamplers = {min_size}x)"
+                )
+
         Conv = get_conv_layer(self.dim)
 
         # Stem: Patchify with stride-4 conv (like ViT patch embedding)

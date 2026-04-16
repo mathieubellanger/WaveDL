@@ -11,10 +11,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Training**: `--grad_accum_steps` flag for gradient accumulation across mini-batches
 
 ### Fixed
+- **Training**: Auto-resume picks latest checkpoint (interrupted > periodic > best) with deferred cleanup and shared-memory probe for worker auto-detect
+- **Config**: CLI-over-YAML precedence handles `--flag=value` form; `validate_config()` derives valid keys from parser
+- **Inference**: Model auto-detection uses longest-prefix matching (fixes multi-underscore IDs)
 - **DDP**: Epoch-based schedulers now step only on rank 0 with LR broadcast (cosine `T_max` was consumed N× faster with N GPUs)
 - **Training**: Per-batch schedulers correctly skipped during gradient accumulation sub-steps
-- **Training**: Weight decay exclusion extended to `gamma`/`beta` parameters (LayerScale, GRN)
-- **ConvNeXt V2**: Added `res_scale` (init=1e-6) to suppress residual branch at init, tuned defaults (`dropout` 0.3→0.1, `drop_path` 0→0.1) — from-scratch training exploded (grad norm ~10⁸) because V2 lacks V1's LayerScale to dampen both forward output and backward gradient
+- **ConvNeXt V1/V2**: Pretrained V2 now loads real V2 weights from `timm` (was V1 torchvision); added ≥32 min spatial size guard; exempt `res_scale` from weight decay; added `res_scale` init=1e-6 for stable from-scratch training; fixed `_init_weights` docstring
 
 ## [1.8.0] - 2026-02-23
 

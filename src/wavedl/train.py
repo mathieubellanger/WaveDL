@@ -890,7 +890,7 @@ def main():
         config = load_config(args.config)
 
         # Validate config values
-        warnings_list = validate_config(config)
+        warnings_list = validate_config(config, parser=parser)
         for w in warnings_list:
             print(f"  ⚠ {w}")
 
@@ -1034,8 +1034,29 @@ def main():
         num_gpus = accelerator.num_processes
         # Heuristic: 4-16 workers per GPU, bounded by available CPU cores
         # Increased cap from 8 to 16 for high-throughput GPUs (H100, A100)
-        args.workers = min(16, max(2, (cpu_count - 2) // num_gpus))
-        if accelerator.is_main_process:
+        proposed = min(16, max(2, (cpu_count - 2) // num_gpus))
+
+        # Probe shared memory: multi-worker DataLoaders use POSIX shm for
+        # IPC. Environments with restricted /dev/shm (containers, CI, macOS
+        # sandboxes) will crash with "torch_shm_manager ... Operation not
+        # permitted".  Fall back to 0 workers (main-process loading) if shm
+        # is unavailable.
+        try:
+            import multiprocessing.shared_memory as _shm
+
+            test_block = _shm.SharedMemory(create=True, size=1)
+            test_block.close()
+            test_block.unlink()
+            args.workers = proposed
+        except (PermissionError, OSError):
+            args.workers = 0
+            if accelerator.is_main_process:
+                logger.warning(
+                    "⚠️  Shared memory unavailable — falling back to workers=0. "
+                    "Multi-worker DataLoaders disabled."
+                )
+
+        if accelerator.is_main_process and args.workers > 0:
             logger.info(
                 f"⚙️  Auto-detected workers: {args.workers} per GPU "
                 f"(CPUs: {cpu_count}, GPUs: {num_gpus})"
@@ -1281,9 +1302,14 @@ def main():
 
     # Define checkpoint paths
     best_ckpt_path = os.path.join(args.output_dir, "best_checkpoint")
+    interrupted_ckpt_path = os.path.join(args.output_dir, "interrupted_checkpoint")
     complete_flag_path = os.path.join(args.output_dir, "training_complete.flag")
 
     # Auto-resume logic (if not --fresh and no explicit --resume)
+    # Priority: interrupted_checkpoint > latest periodic/best checkpoint
+    # The interrupted checkpoint captures the latest state after Ctrl+C.
+    # Periodic checkpoints may be newer than best_checkpoint after a
+    # non-KeyboardInterrupt crash (e.g., OOM, hardware failure).
     if not args.fresh and args.resume is None:
         if os.path.exists(complete_flag_path):
             # Training already completed
@@ -1292,11 +1318,65 @@ def main():
                     "✅ Training already completed (early stopping). Use --fresh to retrain."
                 )
             return  # Exit gracefully
-        elif os.path.exists(best_ckpt_path):
-            # Incomplete training found - auto-resume
-            args.resume = best_ckpt_path
+        elif os.path.exists(interrupted_ckpt_path):
+            # Prefer interrupted checkpoint (most recent optimizer/scheduler state)
+            args.resume = interrupted_ckpt_path
             if accelerator.is_main_process:
-                logger.info(f"🔄 Auto-resuming from: {best_ckpt_path}")
+                logger.info(
+                    f"🔄 Auto-resuming from interrupted checkpoint: {interrupted_ckpt_path}"
+                )
+        else:
+            # Find the latest checkpoint by epoch number across best and
+            # periodic checkpoints.  A crash after a periodic save should
+            # not rewind to an earlier best_checkpoint.
+            latest_ckpt = None
+            latest_epoch = -1
+
+            # Check best_checkpoint
+            if os.path.exists(best_ckpt_path):
+                meta_file = os.path.join(best_ckpt_path, "training_meta.pkl")
+                if os.path.exists(meta_file):
+                    with open(meta_file, "rb") as f:
+                        m = pickle.load(f)
+                    ep = m.get("epoch", 0)
+                    if ep > latest_epoch:
+                        latest_epoch = ep
+                        latest_ckpt = best_ckpt_path
+                else:
+                    # No metadata — treat as epoch 0 fallback
+                    latest_ckpt = best_ckpt_path
+                    latest_epoch = 0
+
+            # Scan periodic epoch_*_checkpoint directories
+            for entry in os.listdir(args.output_dir):
+                if not entry.startswith("epoch_") or not entry.endswith("_checkpoint"):
+                    continue
+                ckpt_candidate = os.path.join(args.output_dir, entry)
+                if not os.path.isdir(ckpt_candidate):
+                    continue
+                meta_file = os.path.join(ckpt_candidate, "training_meta.pkl")
+                if os.path.exists(meta_file):
+                    with open(meta_file, "rb") as f:
+                        m = pickle.load(f)
+                    ep = m.get("epoch", 0)
+                    if ep > latest_epoch:
+                        latest_epoch = ep
+                        latest_ckpt = ckpt_candidate
+
+            if latest_ckpt is not None:
+                args.resume = latest_ckpt
+                if accelerator.is_main_process:
+                    logger.info(
+                        f"🔄 Auto-resuming from latest checkpoint: {latest_ckpt} "
+                        f"(epoch {latest_epoch})"
+                    )
+
+    # Track whether we need to clean up a consumed interrupted checkpoint.
+    # Deferred until the first new checkpoint is written so we don't lose
+    # our only recovery point if the resumed process crashes during setup.
+    _cleanup_interrupted_pending = (
+        args.resume == interrupted_ckpt_path and os.path.exists(interrupted_ckpt_path)
+    )
 
     if args.resume:
         if os.path.exists(args.resume):
@@ -1357,6 +1437,10 @@ def main():
         logger.info("=" * len(header))
         logger.info(header)
         logger.info("=" * len(header))
+
+    # Initialize epoch before try block so the interrupt handler always has
+    # a valid value, even if KeyboardInterrupt fires before the loop starts.
+    epoch = start_epoch
 
     try:
         total_training_time = 0.0
@@ -1635,6 +1719,13 @@ def main():
                         os.path.join(args.output_dir, "training_history.csv"),
                         index=False,
                     )
+
+                    # Deferred cleanup: now that a fresh checkpoint exists,
+                    # it's safe to remove the consumed interrupted checkpoint.
+                    if _cleanup_interrupted_pending:
+                        shutil.rmtree(interrupted_ckpt_path, ignore_errors=True)
+                        _cleanup_interrupted_pending = False
+                        logger.info("   🗑️  Cleaned up consumed interrupted checkpoint")
             else:
                 if accelerator.is_main_process:
                     patience_ctr += 1
@@ -1664,6 +1755,12 @@ def main():
                             f,
                         )
                     logger.info(f"   📁 Periodic checkpoint: {ckpt_name}")
+
+                    # Deferred cleanup (same as best checkpoint path above)
+                    if _cleanup_interrupted_pending:
+                        shutil.rmtree(interrupted_ckpt_path, ignore_errors=True)
+                        _cleanup_interrupted_pending = False
+                        logger.info("   🗑️  Cleaned up consumed interrupted checkpoint")
 
                     # Save CSV with each checkpoint (keeps logs in sync with model state)
                     pd.DataFrame(history).to_csv(
@@ -1723,8 +1820,29 @@ def main():
         logger.warning("Training interrupted. Saving emergency checkpoint...")
         with suppress_accelerate_logging():
             accelerator.save_state(
-                os.path.join(args.output_dir, "interrupted_checkpoint"),
+                interrupted_ckpt_path,
                 safe_serialization=False,
+            )
+
+        # Save training metadata so auto-resume can restore epoch/patience state.
+        # We save the current (incomplete) epoch so it gets re-run on resume.
+        if accelerator.is_main_process:
+            with open(
+                os.path.join(interrupted_ckpt_path, "training_meta.pkl"), "wb"
+            ) as f:
+                pickle.dump(
+                    {
+                        "epoch": epoch,  # Re-run the interrupted epoch
+                        "best_val_loss": best_val_loss,
+                        "patience_ctr": patience_ctr,
+                        "model_name": args.model,
+                        "in_shape": in_shape,
+                        "out_dim": out_dim,
+                    },
+                    f,
+                )
+            logger.info(
+                f"   💾 Emergency checkpoint saved (will resume from epoch {epoch + 1})"
             )
 
     except Exception as e:

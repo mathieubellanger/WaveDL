@@ -343,15 +343,26 @@ def load_checkpoint(
                 logging.info(f"   Auto-detected model from checkpoint: {model_name}")
 
         # Fallback: try to detect from parent directory name (e.g., 'cnn_test' -> 'cnn')
+        # Use longest-prefix matching since many model IDs contain underscores
+        # (e.g., 'convnext_tiny', 'mobilenet_v3_small', 'resnet18_pretrained')
         if model_name is None:
             parent_dir = checkpoint_dir.parent.name
-            detected_name = (
-                parent_dir.split("_")[0]
-                if "_" in parent_dir
-                else parent_dir.split("-")[0]
-            )
+            known_models = list_models()
+            # Sort by length descending so longer (more specific) names match first
+            # e.g., 'resnet18_pretrained' matches before 'resnet18'
+            candidates = sorted(known_models, key=len, reverse=True)
+            detected_name = None
+            for name in candidates:
+                # Check that name is a proper prefix (followed by separator or end)
+                if (
+                    parent_dir == name
+                    or parent_dir.startswith(name + "_")
+                    or parent_dir.startswith(name + "-")
+                ):
+                    detected_name = name
+                    break
 
-            if detected_name in list_models():
+            if detected_name is not None:
                 model_name = detected_name
                 logging.info(f"   Auto-detected model from folder: {model_name}")
             else:

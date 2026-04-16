@@ -1488,7 +1488,7 @@ def prepare_data(
                     pickle.dump(scaler, f)
 
             # Cleanup: close file handles BEFORE deleting references
-            if "_lazy_handle" in dir() and _lazy_handle is not None:
+            if _lazy_handle is not None:
                 try:
                     _lazy_handle.close()
                 except Exception:
