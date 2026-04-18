@@ -117,6 +117,9 @@ class ConvNeXtV2Block(nn.Module):
         self.drop_path = DropPath(drop_path) if drop_path > 0.0 else nn.Identity()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # NOTE: This forward has 4 permute round-trips (vs 2 in ConvNeXt V1)
+        # because GRN operates in channels-first between channels-last linear
+        # layers. A channels-last GRN implementation would eliminate 2 permutes.
         residual = x
 
         # Depthwise conv
@@ -457,7 +460,9 @@ class ConvNeXtV2TinyPretrained(BaseModel):
                 num_classes=0,  # Remove classifier
             )
 
-            # Get feature dimension
+            # Get feature dimension.
+            # IMPORTANT: The probe MUST happen before _adapt_input_channels()
+            # because the backbone still expects 3-channel input here.
             with torch.no_grad():
                 self.backbone.eval()
                 dummy = torch.zeros(1, 3, *in_shape)

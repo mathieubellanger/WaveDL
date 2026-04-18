@@ -43,6 +43,12 @@ try:
 
     EFFICIENTNETV2_AVAILABLE = True
 except ImportError:
+    efficientnet_v2_s = None
+    efficientnet_v2_m = None
+    efficientnet_v2_l = None
+    EfficientNet_V2_S_Weights = None
+    EfficientNet_V2_M_Weights = None
+    EfficientNet_V2_L_Weights = None
     EFFICIENTNETV2_AVAILABLE = False
 
 from wavedl.models.base import BaseModel

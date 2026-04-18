@@ -314,12 +314,13 @@ class FileConstraint(nn.Module):
         self.reduction = reduction
 
         # Load module from file
-        spec = importlib.util.spec_from_file_location("constraint_module", file_path)
+        module_name = f"constraint_module_{id(self)}"
+        spec = importlib.util.spec_from_file_location(module_name, file_path)
         if spec is None or spec.loader is None:
             raise ValueError(f"Could not load constraint file: {file_path}")
 
         module = importlib.util.module_from_spec(spec)
-        sys.modules["constraint_module"] = module
+        sys.modules[module_name] = module
         spec.loader.exec_module(module)
 
         if not hasattr(module, "constraint"):

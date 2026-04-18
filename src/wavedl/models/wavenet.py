@@ -36,7 +36,7 @@ from typing import Any
 import torch
 import torch.nn as nn
 
-from wavedl.models.base import BaseModel, compute_num_groups
+from wavedl.models.base import BaseModel
 from wavedl.models.registry import register_model
 
 
@@ -75,9 +75,6 @@ class GatedResidualBlock(nn.Module):
             kernel_size=kernel_size,
             dilation=dilation,
             padding=padding,
-        )
-        self.norm = nn.GroupNorm(
-            compute_num_groups(channels, preferred_groups=8), channels
         )
         self.dropout = nn.Dropout(dropout)
 

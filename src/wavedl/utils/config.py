@@ -138,12 +138,23 @@ def merge_config_with_args(
 
     # Apply config values only where CLI didn't override
     for key, value in config.items():
-        if hasattr(args, key):
+        target_key = key
+        if not hasattr(args, key) and "_" in key:
+            # Nested YAML key (e.g., "optimizer_lr" from {optimizer: {lr: ...}}).
+            # Try removing the namespace prefix to match the argparse destination.
+            stripped = key.split("_", 1)[1]
+            if hasattr(args, stripped):
+                target_key = stripped
+                logging.info(f"Config: nested key '{key}' → mapped to '{stripped}'")
+
+        if hasattr(args, target_key):
             # Skip if user explicitly set this via CLI
-            if key in cli_overrides:
-                logging.debug(f"Config key '{key}' skipped: CLI override detected")
+            if target_key in cli_overrides:
+                logging.debug(
+                    f"Config key '{target_key}' skipped: CLI override detected"
+                )
                 continue
-            setattr(args, key, value)
+            setattr(args, target_key, value)
         elif not ignore_unknown:
             logging.warning(f"Unknown config key: {key}")
         else:
@@ -341,6 +352,12 @@ def validate_config(
 
     for key in config:
         if key not in check_keys:
+            # Try stripping namespace prefix for nested YAML keys
+            # (e.g., "optimizer_lr" from {optimizer: {lr: ...}} → check "lr")
+            if "_" in key:
+                stripped = key.split("_", 1)[1]
+                if stripped in check_keys:
+                    continue
             warnings.append(
                 f"Unknown config key: '{key}' - check for typos or see wavedl-train --help"
             )

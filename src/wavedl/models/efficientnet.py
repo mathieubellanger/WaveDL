@@ -41,6 +41,14 @@ try:
 
     TORCHVISION_AVAILABLE = True
 except ImportError:
+    efficientnet_b0 = None
+    efficientnet_b2 = None
+    efficientnet_b4 = None
+    efficientnet_b7 = None
+    EfficientNet_B0_Weights = None
+    EfficientNet_B2_Weights = None
+    EfficientNet_B4_Weights = None
+    EfficientNet_B7_Weights = None
     TORCHVISION_AVAILABLE = False
 
 from wavedl.models.base import BaseModel

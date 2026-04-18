@@ -181,7 +181,7 @@ def create_objective(args):
                 raise  # Re-raise for Optuna to handle
             except Exception as e:
                 print(f"Trial {trial.number}: Error - {e}")
-                return float("inf")
+                raise
 
         # ==================================================================
         # SUBPROCESS MODE (default): GPU memory isolation, no pruning
@@ -273,7 +273,9 @@ def create_objective(args):
                     stderr_lines = result.stderr.strip().split("\n")[-3:]
                     for line in stderr_lines:
                         print(f"  stderr: {line}")
-                    return float("inf")
+                    raise RuntimeError(
+                        f"Trial subprocess failed with exit code {result.returncode}"
+                    )
 
                 # Read best val_loss from training_history.csv (reliable machine-readable)
                 val_loss = None
@@ -317,24 +319,19 @@ def create_objective(args):
                         val_loss = min(val_losses_stdout)
 
                 if val_loss is None:
-                    # Training failed or no loss found
-                    print(f"Trial {trial.number}: Training failed (no val_loss found)")
-                    if result.returncode != 0:
-                        # Show last few lines of stderr for debugging
-                        stderr_lines = result.stderr.strip().split("\n")[-3:]
-                        for line in stderr_lines:
-                            print(f"  stderr: {line}")
-                    return float("inf")
+                    raise RuntimeError(
+                        f"Trial {trial.number}: Training completed but no val_loss found"
+                    )
 
                 print(f"Trial {trial.number}: val_loss={val_loss:.6f}")
                 return val_loss
 
             except subprocess.TimeoutExpired:
                 print(f"Trial {trial.number}: Timeout after {args.timeout}s")
-                return float("inf")
+                raise optuna.TrialPruned(f"Timeout after {args.timeout}s")
             except Exception as e:
                 print(f"Trial {trial.number}: Error - {e}")
-                return float("inf")
+                raise
 
     return objective
 

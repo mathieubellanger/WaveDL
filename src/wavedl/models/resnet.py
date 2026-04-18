@@ -405,6 +405,10 @@ try:
 
     TORCHVISION_AVAILABLE = True
 except ImportError:
+    tv_resnet18 = None
+    tv_resnet50 = None
+    ResNet18_Weights = None
+    ResNet50_Weights = None
     TORCHVISION_AVAILABLE = False
 
 

@@ -52,6 +52,10 @@ try:
 
     RESNET3D_AVAILABLE = True
 except ImportError:
+    r3d_18 = None
+    mc3_18 = None
+    R3D_18_Weights = None
+    MC3_18_Weights = None
     RESNET3D_AVAILABLE = False
 
 from wavedl.models.base import BaseModel

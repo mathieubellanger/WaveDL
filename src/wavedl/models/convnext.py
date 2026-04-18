@@ -27,7 +27,7 @@ from typing import Any
 import torch
 import torch.nn as nn
 
-from wavedl.models._pretrained_utils import LayerNormNd, get_conv_layer
+from wavedl.models._pretrained_utils import DropPath, LayerNormNd, get_conv_layer
 from wavedl.models.base import BaseModel, SpatialShape
 from wavedl.models.registry import register_model
 
@@ -90,16 +90,8 @@ class ConvNeXtBlock(nn.Module):
         )
 
         # Stochastic depth (drop path) for regularisation in deep networks
-        if drop_path > 0.0:
-            try:
-                from timm.layers import DropPath
-
-                self.drop_path = DropPath(drop_path)
-            except ImportError:
-                # Fallback: skip stochastic depth if timm is unavailable
-                self.drop_path = nn.Identity()
-        else:
-            self.drop_path = nn.Identity()
+        # Uses the local DropPath from _pretrained_utils (always available)
+        self.drop_path = DropPath(drop_path) if drop_path > 0.0 else nn.Identity()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         residual = x
@@ -363,6 +355,8 @@ try:
 
     CONVNEXT_PRETRAINED_AVAILABLE = True
 except ImportError:
+    tv_convnext_tiny = None
+    ConvNeXt_Tiny_Weights = None
     CONVNEXT_PRETRAINED_AVAILABLE = False
 
 

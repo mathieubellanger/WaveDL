@@ -344,6 +344,12 @@ def run_cross_validation(
     # Setup
     os.makedirs(output_dir, exist_ok=True)
 
+    if folds < 2:
+        raise ValueError(
+            f"Cross-validation requires at least 2 folds, got {folds}. "
+            f"Use standard training (without --cv) for single-split training."
+        )
+
     if logger is None:
         logging.basicConfig(
             level=logging.INFO,
@@ -391,6 +397,7 @@ def run_cross_validation(
             y_binned = np.digitize(
                 y[:, 0], np.percentile(y[:, 0], np.linspace(0, 100, stratify_bins + 1))
             )
+            y_binned = np.clip(y_binned, 1, stratify_bins)
             kfold = StratifiedKFold(n_splits=folds, shuffle=True, random_state=seed)
             splits = list(kfold.split(X, y_binned))
         except ValueError:
@@ -567,11 +574,15 @@ def run_cross_validation(
             f"MAE={np.mean(mae_target):.4f}±{np.std(mae_target):.4f}"
         )
 
-    # Save summary
+    # Save summary (without bulky history to keep JSON small)
     with open(os.path.join(output_dir, "cv_summary.json"), "w") as f:
-        summary_save = summary.copy()
-        for r in summary_save["fold_results"]:
-            r["history"] = None  # Too large
+        summary_save = {
+            **summary,
+            "fold_results": [
+                {k: v for k, v in r.items() if k != "history"}
+                for r in summary["fold_results"]
+            ],
+        }
         json.dump(summary_save, f, indent=2)
 
     # Save detailed results as CSV

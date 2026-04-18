@@ -233,6 +233,8 @@ class TCNBase(BaseModel):
         """Initialize weights using Kaiming initialization."""
         for m in self.modules():
             if isinstance(m, (nn.Conv1d, nn.Linear)):
+                # Kaiming init with 'relu' gain (~√2); a reasonable approximation
+                # for GELU activation (PyTorch has no native GELU gain support).
                 nn.init.kaiming_normal_(m.weight, mode="fan_out", nonlinearity="relu")
                 if m.bias is not None:
                     nn.init.constant_(m.bias, 0)

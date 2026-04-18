@@ -56,6 +56,16 @@ try:
 
     REGNET_AVAILABLE = True
 except ImportError:
+    regnet_y_400mf = None
+    regnet_y_800mf = None
+    regnet_y_1_6gf = None
+    regnet_y_3_2gf = None
+    regnet_y_8gf = None
+    RegNet_Y_400MF_Weights = None
+    RegNet_Y_800MF_Weights = None
+    RegNet_Y_1_6GF_Weights = None
+    RegNet_Y_3_2GF_Weights = None
+    RegNet_Y_8GF_Weights = None
     REGNET_AVAILABLE = False
 
 from wavedl.models.base import BaseModel

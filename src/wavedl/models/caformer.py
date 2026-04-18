@@ -117,19 +117,40 @@ class CaFormerBase(BaseModel):
     def _adapt_input_channels(self):
         """Adapt first conv layer for single-channel input."""
         # CaFormer uses stem for first layer
-        if hasattr(self.backbone, "stem"):
-            first_conv = None
-            # Find first conv in stem
-            for name, module in self.backbone.stem.named_modules():
-                if isinstance(module, nn.Conv2d):
-                    first_conv = (name, module)
-                    break
+        if not hasattr(self.backbone, "stem"):
+            import warnings
 
-            if first_conv is not None:
-                name, old_conv = first_conv
-                new_conv = self._make_new_conv(old_conv)
-                # Set the new conv (handle nested structure)
-                self._set_module(self.backbone.stem, name, new_conv)
+            warnings.warn(
+                "CaFormer backbone has no 'stem' attribute. "
+                "Input channel adaptation skipped — model may fail "
+                "with single-channel input.",
+                UserWarning,
+                stacklevel=2,
+            )
+            return
+
+        first_conv = None
+        # Find first conv in stem
+        for name, module in self.backbone.stem.named_modules():
+            if isinstance(module, nn.Conv2d):
+                first_conv = (name, module)
+                break
+
+        if first_conv is not None:
+            name, old_conv = first_conv
+            new_conv = self._make_new_conv(old_conv)
+            # Set the new conv (handle nested structure)
+            self._set_module(self.backbone.stem, name, new_conv)
+        else:
+            import warnings
+
+            warnings.warn(
+                "No Conv2d found in CaFormer stem. "
+                "Input channel adaptation skipped — model may fail "
+                "with single-channel input.",
+                UserWarning,
+                stacklevel=2,
+            )
 
     def _make_new_conv(self, old_conv: nn.Conv2d) -> nn.Conv2d:
         """Create new conv layer with 1 input channel."""
@@ -149,11 +170,18 @@ class CaFormerBase(BaseModel):
         return new_conv
 
     def _set_module(self, parent: nn.Module, name: str, module: nn.Module):
-        """Set a nested module by name."""
+        """Set a nested module by name, supporting integer-indexed children."""
         parts = name.split(".")
         for part in parts[:-1]:
-            parent = getattr(parent, part)
-        setattr(parent, parts[-1], module)
+            if part.isdigit():
+                parent = parent[int(part)]
+            else:
+                parent = getattr(parent, part)
+        final = parts[-1]
+        if final.isdigit():
+            parent[int(final)] = module
+        else:
+            setattr(parent, final, module)
 
     def _freeze_backbone(self):
         """Freeze backbone parameters."""

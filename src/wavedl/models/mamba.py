@@ -428,12 +428,28 @@ class Mamba1DBase(BaseModel):
         """
         _B, _C, L = x.shape
 
+        # Validate positional encoding coverage
+        pos_len = self.pos_embed.shape[1]
+        if pos_len < L:
+            import warnings
+
+            warnings.warn(
+                f"Input length {L} exceeds pos_embed size "
+                f"{pos_len} (from in_shape). "
+                f"Positions beyond {pos_len} will have "
+                f"no positional encoding.",
+                UserWarning,
+                stacklevel=2,
+            )
+
         # Reshape to sequence
         x = x.transpose(1, 2)  # (B, L, 1)
         x = self.input_proj(x)  # (B, L, d_model)
 
-        # Add positional encoding
-        x = x + self.pos_embed[:, :L, :]
+        # Add positional encoding to covered positions only;
+        # positions beyond pos_embed length receive no encoding.
+        embed_len = min(L, pos_len)
+        x[:, :embed_len, :] = x[:, :embed_len, :] + self.pos_embed[:, :embed_len, :]
 
         # Mamba blocks
         for block in self.blocks:
@@ -484,6 +500,19 @@ class VisionMambaBase(BaseModel):
         self.d_model = d_model
 
         H, W = in_shape
+        h_rem, w_rem = H % patch_size, W % patch_size
+        if h_rem != 0 or w_rem != 0:
+            import warnings
+
+            warnings.warn(
+                f"Input shape ({H}, {W}) not divisible by patch_size "
+                f"{patch_size}. Border pixels will be dropped "
+                f"(H: {h_rem}, W: {w_rem}). Consider padding to "
+                f"({((H // patch_size) + 1) * patch_size}, "
+                f"{((W // patch_size) + 1) * patch_size}).",
+                UserWarning,
+                stacklevel=2,
+            )
         self.num_patches = (H // patch_size) * (W // patch_size)
         self.grid_size = (H // patch_size, W // patch_size)
 

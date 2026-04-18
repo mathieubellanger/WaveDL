@@ -181,6 +181,23 @@ class MaxViTBase(BaseModel):
         h, w = in_shape
         target_h = max(self._divisor, math.ceil(h / self._divisor) * self._divisor)
         target_w = max(self._divisor, math.ceil(w / self._divisor) * self._divisor)
+
+        # Warn if resize significantly changes pixel count
+        original_pixels = h * w
+        target_pixels = target_h * target_w
+        if target_pixels > original_pixels * 1.5:
+            import warnings
+
+            warnings.warn(
+                f"MaxViT input ({h}, {w}) rounded up to ({target_h}, {target_w}) "
+                f"for attention window compatibility ({target_pixels / original_pixels:.1f}x "
+                f"pixel count increase). Bilinear interpolation may degrade "
+                f"data quality. Consider resizing input to a multiple of "
+                f"{self._divisor}.",
+                UserWarning,
+                stacklevel=3,
+            )
+
         return (target_h, target_w)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:

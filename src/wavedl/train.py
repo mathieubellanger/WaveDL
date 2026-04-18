@@ -182,6 +182,8 @@ torch.set_float32_matmul_precision("high")  # Use TF32 for float32 ops
 # Note: First few batches may be slower due to benchmarking
 torch.backends.cudnn.benchmark = True
 
+WANDB_SCATTER_INTERVAL = 5
+
 
 # ==============================================================================
 # LOGGING UTILITIES
@@ -1014,8 +1016,7 @@ def main():
         torch.backends.cuda.matmul.allow_tf32 = False
         torch.backends.cudnn.allow_tf32 = False
         torch.use_deterministic_algorithms(True, warn_only=True)
-        if accelerator.is_main_process:
-            print("🔒 Deterministic mode enabled (slower but reproducible)")
+        accelerator.print("🔒 Deterministic mode enabled (slower but reproducible)")
 
     # Configure logging (rank 0 only prints to console)
     logging.basicConfig(
@@ -1310,14 +1311,16 @@ def main():
     # The interrupted checkpoint captures the latest state after Ctrl+C.
     # Periodic checkpoints may be newer than best_checkpoint after a
     # non-KeyboardInterrupt crash (e.g., OOM, hardware failure).
+    training_already_complete = False
     if not args.fresh and args.resume is None:
         if os.path.exists(complete_flag_path):
-            # Training already completed
+            # Training already completed — will exit after entering try block
+            # so the finally block runs cleanup (WandB, DDP process group)
+            training_already_complete = True
             if accelerator.is_main_process:
                 logger.info(
                     "✅ Training already completed (early stopping). Use --fresh to retrain."
                 )
-            return  # Exit gracefully
         elif os.path.exists(interrupted_ckpt_path):
             # Prefer interrupted checkpoint (most recent optimizer/scheduler state)
             args.resume = interrupted_ckpt_path
@@ -1381,7 +1384,45 @@ def main():
     if args.resume:
         if os.path.exists(args.resume):
             logger.info(f"🔄 Loading checkpoint from: {args.resume}")
-            accelerator.load_state(args.resume)
+
+            # Detect checkpoint format: standalone (from KeyboardInterrupt)
+            # vs accelerator-managed (from normal save_state)
+            standalone_weights = os.path.join(args.resume, "model_weights.pth")
+            if os.path.exists(standalone_weights):
+                # Standalone format: model_weights.pth + optimizer.pt
+                unwrapped = accelerator.unwrap_model(model)
+                unwrapped.load_state_dict(
+                    torch.load(
+                        standalone_weights, map_location="cpu", weights_only=True
+                    )
+                )
+                standalone_optim = os.path.join(args.resume, "optimizer.pt")
+                if os.path.exists(standalone_optim):
+                    optimizer.load_state_dict(
+                        torch.load(
+                            standalone_optim, map_location="cpu", weights_only=True
+                        )
+                    )
+                # Restore scheduler state (prevents LR schedule restart on resume)
+                standalone_scheduler = os.path.join(args.resume, "scheduler.pt")
+                if os.path.exists(standalone_scheduler):
+                    scheduler.load_state_dict(
+                        torch.load(
+                            standalone_scheduler,
+                            map_location="cpu",
+                            weights_only=True,
+                        )
+                    )
+                    logger.info(
+                        "   Loaded standalone checkpoint (emergency format, scheduler restored)"
+                    )
+                else:
+                    logger.warning(
+                        "   ⚠️ Loaded standalone checkpoint WITHOUT scheduler state — "
+                        "LR schedule will restart from scratch"
+                    )
+            else:
+                accelerator.load_state(args.resume)
 
             # Restore training metadata
             meta_path = os.path.join(args.resume, "training_meta.pkl")
@@ -1443,6 +1484,9 @@ def main():
     epoch = start_epoch
 
     try:
+        if training_already_complete:
+            return
+
         total_training_time = 0.0
 
         for epoch in range(start_epoch, args.epochs):
@@ -1529,6 +1573,9 @@ def main():
                         else:
                             loss = criterion(pred, y)
 
+                    # Note: val_loss_sum includes DDP-padded duplicates.
+                    # This is corrected after gathering by recomputing from
+                    # de-padded predictions (see DDP padding correction below).
                     val_loss_sum += loss.detach() * x.size(0)
                     val_samples += x.size(0)
 
@@ -1585,6 +1632,34 @@ def main():
             )
             avg_mae = avg_mae_per_param.mean()
 
+            # Correct DDP padding bias: recompute val metrics from de-padded
+            # gathered predictions. The reduce-based values above include
+            # padded duplicate samples; this override removes that bias.
+            if accelerator.num_processes > 1 and accelerator.is_main_process:
+                _base_crit = (
+                    criterion.base_loss
+                    if isinstance(criterion, PhysicsConstrainedLoss)
+                    else criterion
+                )
+                # Recompute loss in chunks to avoid GPU OOM
+                _loss_sum = 0.0
+                _n = len(gathered_preds)
+                _chunk = 2048
+                for _i in range(0, _n, _chunk):
+                    _p = gathered_preds[_i : _i + _chunk].to(accelerator.device)
+                    _t = gathered_targets[_i : _i + _chunk].to(accelerator.device)
+                    _loss_sum += _base_crit(_p, _t).item() * len(_p)
+                avg_val_loss = _loss_sum / _n
+
+                # Also correct MAE from de-padded data
+                avg_mae_per_param = (
+                    torch.abs((gathered_preds - gathered_targets) * phys_scale.cpu())
+                    .mean(dim=0)
+                    .float()
+                    .numpy()
+                )
+                avg_mae = avg_mae_per_param.mean()
+
             # ==================== LOGGING & CHECKPOINTING ====================
             if accelerator.is_main_process:
                 # Scientific metrics - cast to float32 before numpy
@@ -1592,12 +1667,13 @@ def main():
                 y_pred = gathered_preds.float().numpy()
                 y_true = gathered_targets.float().numpy()
 
-                # Guard against tiny validation sets (R² undefined for <2 samples)
+                # Guard against tiny validation sets (R²/Pearson undefined for <2 samples)
                 if len(y_true) >= 2:
                     r2 = r2_score(y_true, y_pred)
+                    pcc = calc_pearson(y_true, y_pred)
                 else:
                     r2 = float("nan")
-                pcc = calc_pearson(y_true, y_pred)
+                    pcc = float("nan")
                 current_lr = get_lr(optimizer)
 
                 # Update history
@@ -1642,7 +1718,9 @@ def main():
                         log_dict[f"mae_detailed/P{i}"] = mae
 
                     # Periodic scatter plots
-                    if (epoch % 5 == 0) or (avg_val_loss < best_val_loss):
+                    if (epoch % WANDB_SCATTER_INTERVAL == 0) or (
+                        avg_val_loss < best_val_loss
+                    ):
                         real_true = scaler.inverse_transform(y_true)
                         real_pred = scaler.inverse_transform(y_pred)
                         fig = plot_scientific_scatter(real_true, real_pred)
@@ -1817,33 +1895,44 @@ def main():
                 break
 
     except KeyboardInterrupt:
-        logger.warning("Training interrupted. Saving emergency checkpoint...")
-        with suppress_accelerate_logging():
-            accelerator.save_state(
-                interrupted_ckpt_path,
-                safe_serialization=False,
-            )
-
-        # Save training metadata so auto-resume can restore epoch/patience state.
-        # We save the current (incomplete) epoch so it gets re-run on resume.
+        # Rank-0-only save to avoid DDP deadlock — accelerator.save_state()
+        # is collective and hangs if ranks receive the signal at different times.
         if accelerator.is_main_process:
-            with open(
-                os.path.join(interrupted_ckpt_path, "training_meta.pkl"), "wb"
-            ) as f:
-                pickle.dump(
-                    {
-                        "epoch": epoch,  # Re-run the interrupted epoch
-                        "best_val_loss": best_val_loss,
-                        "patience_ctr": patience_ctr,
-                        "model_name": args.model,
-                        "in_shape": in_shape,
-                        "out_dim": out_dim,
-                    },
-                    f,
+            logger.warning("Training interrupted. Saving emergency checkpoint...")
+            try:
+                os.makedirs(interrupted_ckpt_path, exist_ok=True)
+                unwrapped = accelerator.unwrap_model(model)
+                torch.save(
+                    unwrapped.state_dict(),
+                    os.path.join(interrupted_ckpt_path, "model_weights.pth"),
                 )
-            logger.info(
-                f"   💾 Emergency checkpoint saved (will resume from epoch {epoch + 1})"
-            )
+                torch.save(
+                    optimizer.state_dict(),
+                    os.path.join(interrupted_ckpt_path, "optimizer.pt"),
+                )
+                torch.save(
+                    scheduler.state_dict(),
+                    os.path.join(interrupted_ckpt_path, "scheduler.pt"),
+                )
+                with open(
+                    os.path.join(interrupted_ckpt_path, "training_meta.pkl"), "wb"
+                ) as f:
+                    pickle.dump(
+                        {
+                            "epoch": epoch,
+                            "best_val_loss": best_val_loss,
+                            "patience_ctr": patience_ctr,
+                            "model_name": args.model,
+                            "in_shape": in_shape,
+                            "out_dim": out_dim,
+                        },
+                        f,
+                    )
+                logger.info(
+                    f"   💾 Emergency checkpoint saved (will resume from epoch {epoch + 1})"
+                )
+            except Exception as save_err:
+                logger.error(f"Failed to save emergency checkpoint: {save_err}")
 
     except Exception as e:
         logger.error(f"Critical error: {e}", exc_info=True)
@@ -1885,8 +1974,8 @@ def main():
             accelerator.end_training()
 
         # Clean up distributed process group to prevent resource leak warning
-        if torch.distributed.is_initialized():
-            torch.distributed.destroy_process_group()
+        if dist.is_initialized():
+            dist.destroy_process_group()
 
         logger.info("Training completed.")
 

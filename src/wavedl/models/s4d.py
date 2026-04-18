@@ -93,7 +93,9 @@ class S4DKernel(nn.Module):
         n = torch.arange(d_state, dtype=torch.float32)
         A_real = -0.5 * torch.ones(d_state)
         A_imag = math.pi * n
-        # Store as learnable parameters (real and imag separately)
+        # Store as learnable parameters (real and imag separately).
+        # A_real is clamped to non-positive in forward() to prevent
+        # exponential growth of the SSM kernel (divergence → NaN).
         self.A_real = nn.Parameter(A_real)  # (d_state,)
         self.A_imag = nn.Parameter(A_imag)  # (d_state,)
 
@@ -102,9 +104,17 @@ class S4DKernel(nn.Module):
         self.C_real = nn.Parameter(torch.randn(d_model, d_state) * 0.02)
         self.C_imag = nn.Parameter(torch.randn(d_model, d_state) * 0.02)
 
+    # Maximum chunk size along L for kernel computation.
+    # Limits peak intermediate memory to chunk_size * d_model * d_state * ~4 tensors.
+    _KERNEL_CHUNK_SIZE: int = 1024
+
     def forward(self, L: int) -> torch.Tensor:
         """
         Compute the S4D-Lin convolution kernel for sequence length L.
+
+        Uses chunked computation along the sequence dimension to avoid
+        materializing full (L, d_model, d_state) intermediates when L is
+        large (e.g. L=8192, d_model=256, d_state=64 → ~2 GB unchunked).
 
         Returns:
             kernel: (d_model, L) real-valued convolution kernel
@@ -113,36 +123,36 @@ class S4DKernel(nn.Module):
 
         # Discretize: A_bar = exp(dt * A)
         # A shape: (d_state,), dt shape: (d_model, d_state)
-        dA_real = dt * self.A_real  # (d_model, d_state)
+        # Clamp A_real to non-positive: guarantees exp(t*A_real) decays,
+        # preventing exponential kernel growth if A_real drifts positive.
+        dA_real = dt * self.A_real.clamp(max=0)  # (d_model, d_state)
         dA_imag = dt * self.A_imag  # (d_model, d_state)
 
-        # S4D-Lin kernel: C * (exp(A*L) - 1) / A  [closed form per timestep]
-        # We build the convolution kernel by computing powers of exp(A)
-        # for t = 0, 1, ..., L-1
-        # powers[t] = exp(A)^t = (exp_real + i*exp_imag)^t
+        # C coefficients (broadcast-ready)
+        C_r = self.C_real.unsqueeze(0)  # (1, d_model, d_state)
+        C_i = self.C_imag.unsqueeze(0)  # (1, d_model, d_state)
 
-        # Build kernel via cumulative product (vectorized via log/exp)
-        # log|exp(A)| = dA_real, angle = dA_imag
-        # power^t: mag = exp(t * dA_real), phase = t * dA_imag
-        t = torch.arange(L, device=dt.device, dtype=dt.dtype)  # (L,)
+        # Chunked computation: process L in blocks to limit peak memory.
+        # Each chunk materializes (chunk_size, d_model, d_state) intermediates
+        # and immediately sums over d_state, keeping only (d_model, chunk_size).
+        chunk_size = self._KERNEL_CHUNK_SIZE
+        kernel_chunks: list[torch.Tensor] = []
 
-        # Broadcast: t (L,) × (d_model, d_state) → (L, d_model, d_state)
-        t = t.view(L, 1, 1)
-        mag_t = (t * dA_real).exp()  # (L, d_model, d_state)
-        cos_t = (t * dA_imag).cos()
-        sin_t = (t * dA_imag).sin()
+        for start in range(0, L, chunk_size):
+            end = min(start + chunk_size, L)
+            t = torch.arange(start, end, device=dt.device, dtype=dt.dtype)
+            t = t.view(-1, 1, 1)  # (chunk_len, 1, 1)
 
-        # Apply C (complex multiply): C * mag * (cos + i*sin)
-        # C_real/imag: (d_model, d_state) → (1, d_model, d_state)
-        C_r = self.C_real.unsqueeze(0)
-        C_i = self.C_imag.unsqueeze(0)
+            mag_t = (t * dA_real).exp()  # (chunk_len, d_model, d_state)
+            cos_t = (t * dA_imag).cos()
+            sin_t = (t * dA_imag).sin()
 
-        # kernel_t = Re(C * exp(A)^t * B)  — with B=1 (S4D-Lin absorbs B into C)
-        k_real = mag_t * (C_r * cos_t - C_i * sin_t)  # (L, d_model, d_state)
+            # kernel_t = Re(C * exp(A)^t * B) — B=1 for S4D-Lin
+            k_real = mag_t * (C_r * cos_t - C_i * sin_t)
+            kernel_chunks.append(k_real.sum(dim=-1))  # (chunk_len, d_model)
 
-        # Sum over states
-        kernel = k_real.sum(dim=-1).permute(1, 0)  # (d_model, L)
-        return kernel
+        kernel = torch.cat(kernel_chunks, dim=0)  # (L, d_model)
+        return kernel.permute(1, 0)  # (d_model, L)
 
 
 # =============================================================================

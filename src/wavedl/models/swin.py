@@ -50,6 +50,12 @@ try:
 
     SWIN_AVAILABLE = True
 except ImportError:
+    swin_t = None
+    swin_s = None
+    swin_b = None
+    Swin_T_Weights = None
+    Swin_S_Weights = None
+    Swin_B_Weights = None
     SWIN_AVAILABLE = False
 
 from wavedl.models.base import BaseModel

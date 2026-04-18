@@ -162,13 +162,15 @@ def get_scheduler(
         )
 
     elif name_lower == "step":
-        return StepLR(optimizer, step_size=step_size, gamma=gamma, **kwargs)
+        step_gamma = gamma if gamma != 0.99 else 0.1
+        return StepLR(optimizer, step_size=step_size, gamma=step_gamma, **kwargs)
 
     elif name_lower == "multistep":
         if milestones is None:
             # Default milestones at 30%, 60%, 90% of epochs
             milestones = [int(epochs * 0.3), int(epochs * 0.6), int(epochs * 0.9)]
-        return MultiStepLR(optimizer, milestones=milestones, gamma=gamma, **kwargs)
+        step_gamma = gamma if gamma != 0.99 else 0.1
+        return MultiStepLR(optimizer, milestones=milestones, gamma=step_gamma, **kwargs)
 
     elif name_lower == "exponential":
         return ExponentialLR(optimizer, gamma=gamma, **kwargs)
@@ -222,7 +224,9 @@ def get_scheduler_with_warmup(
         total_iters=warmup_epochs,
     )
 
-    # Create main scheduler
+    # Create main scheduler with adjusted epoch budget
+    if "epochs" in kwargs:
+        kwargs["epochs"] = max(1, kwargs["epochs"] - warmup_epochs)
     main_scheduler = get_scheduler(name, optimizer, **kwargs)
 
     # Combine with SequentialLR

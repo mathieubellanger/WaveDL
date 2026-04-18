@@ -477,8 +477,8 @@ def plot_error_histogram(
         ax.grid(True, axis="y")
 
     _hide_unused_subplots(axes, num_params)
-    _add_unified_legend(fig, axes, ncol=3)
     plt.tight_layout()
+    _add_unified_legend(fig, axes, ncol=3)
     return fig
 
 
@@ -546,8 +546,8 @@ def plot_residuals(
         ax.grid(True)
 
     _hide_unused_subplots(axes, num_params)
-    _add_unified_legend(fig, axes, ncol=3)
     plt.tight_layout()
+    _add_unified_legend(fig, axes, ncol=3)
     return fig
 
 
@@ -556,7 +556,7 @@ def plot_residuals(
 # ==============================================================================
 def create_training_curves(
     history: list[dict[str, Any]],
-    metrics: list[str] = ["train_loss", "val_loss"],
+    metrics: list[str] | None = None,
     show_lr: bool = True,
 ) -> plt.Figure:
     """
@@ -575,6 +575,10 @@ def create_training_curves(
         Matplotlib Figure object
     """
     _ensure_style_configured()
+
+    if metrics is None:
+        metrics = ["train_loss", "val_loss"]
+
     epochs = [h.get("epoch", i + 1) for i, h in enumerate(history)]
 
     fig, ax1 = plt.subplots(figsize=(FIGURE_WIDTH_INCH * 0.7, FIGURE_WIDTH_INCH * 0.4))
@@ -761,8 +765,8 @@ def plot_bland_altman(
         ax.grid(True)
 
     _hide_unused_subplots(axes, num_params)
-    _add_unified_legend(fig, axes, ncol=3)
     plt.tight_layout()
+    _add_unified_legend(fig, axes, ncol=3)
     return fig
 
 
@@ -1222,8 +1226,8 @@ def plot_prediction_vs_index(
         ax.grid(True)
 
     _hide_unused_subplots(axes, num_params)
-    _add_unified_legend(fig, axes, ncol=2)
     plt.tight_layout()
+    _add_unified_legend(fig, axes, ncol=2)
     return fig
 
 

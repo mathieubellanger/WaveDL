@@ -150,7 +150,7 @@ def get_optimizer_with_param_groups(
     model: torch.nn.Module,
     lr: float = 1e-3,
     weight_decay: float = 1e-4,
-    no_decay_keywords: list[str] = None,
+    no_decay_keywords: list[str] | None = None,
     **kwargs,
 ) -> optim.Optimizer:
     """

@@ -322,6 +322,7 @@ def load_checkpoint(
 
     # Load training metadata
     meta_path = checkpoint_dir / "training_meta.pkl"
+    meta = None
     if meta_path.exists():
         with open(meta_path, "rb") as f:
             meta = pickle.load(f)
@@ -335,12 +336,9 @@ def load_checkpoint(
     # Auto-detect model architecture if not specified
     if model_name is None:
         # First, try to read from training_meta.pkl (most reliable)
-        if meta_path.exists():
-            with open(meta_path, "rb") as f:
-                meta = pickle.load(f)
-            if meta.get("model_name"):
-                model_name = meta["model_name"]
-                logging.info(f"   Auto-detected model from checkpoint: {model_name}")
+        if meta is not None and meta.get("model_name"):
+            model_name = meta["model_name"]
+            logging.info(f"   Auto-detected model from checkpoint: {model_name}")
 
         # Fallback: try to detect from parent directory name (e.g., 'cnn_test' -> 'cnn')
         # Use longest-prefix matching since many model IDs contain underscores
@@ -410,13 +408,19 @@ def load_checkpoint(
     # Remove wrapper prefixes from checkpoints:
     # - 'module.' from DDP (DistributedDataParallel)
     # - '_orig_mod.' from torch.compile()
+    # Iterative stripping handles any nesting order
     cleaned_dict = {}
     for k, v in state_dict.items():
         key = k
-        if key.startswith("module."):
-            key = key[7:]  # Remove 'module.' (7 chars)
-        if key.startswith("_orig_mod."):
-            key = key[10:]  # Remove '_orig_mod.' (10 chars)
+        changed = True
+        while changed:
+            changed = False
+            if key.startswith("module."):
+                key = key[7:]
+                changed = True
+            if key.startswith("_orig_mod."):
+                key = key[10:]
+                changed = True
         cleaned_dict[key] = v
     state_dict = cleaned_dict
 
@@ -850,7 +854,7 @@ def plot_results(
     y_pred: np.ndarray,
     output_dir: str,
     param_names: list | None = None,
-    formats: list = ["png"],
+    formats: list | None = None,
 ):
     """Generate and save publication-quality plots with consistent LaTeX styling.
 
@@ -874,6 +878,9 @@ def plot_results(
         formats: List of output formats (png, pdf, svg, eps, tiff)
     """
     n_params = y_true.shape[1]
+
+    if formats is None:
+        formats = ["png"]
 
     if param_names is None or len(param_names) != n_params:
         param_names = [f"P{i}" for i in range(n_params)]
@@ -965,7 +972,39 @@ def main():
         output_key=args.output_key,
         input_channels=args.input_channels,
     )
-    in_shape = tuple(X_test.shape[2:])
+    # Derive in_shape: prefer training_meta.pkl (authoritative) over data tensor.
+    # This prevents shallow 3D volumes from being misinterpreted as multi-channel 2D.
+    meta_in_shape = None
+    meta_path = Path(args.checkpoint) / "training_meta.pkl"
+    if meta_path.exists():
+        try:
+            with open(meta_path, "rb") as f:
+                _meta = pickle.load(f)
+            meta_in_shape = _meta.get("in_shape")
+        except Exception:
+            pass
+
+    data_in_shape = tuple(X_test.shape[2:])
+
+    if meta_in_shape is not None:
+        in_shape = tuple(meta_in_shape)
+        # Ensure data tensor matches training-time channel expectations.
+        # If checkpoint says 3D (e.g., in_shape=(8,64,64)) but load_test_data
+        # treated it as multi-channel 2D, add the missing channel dimension.
+        expected_ndim = len(in_shape) + 2  # batch + channel + spatial
+        if X_test.ndim == expected_ndim - 1:
+            X_test = X_test.unsqueeze(1)
+            logger.info(
+                f"   Added channel dim to match checkpoint: {tuple(X_test.shape)}"
+            )
+        if in_shape != tuple(X_test.shape[2:]):
+            logger.warning(
+                f"   ⚠️ in_shape from checkpoint {in_shape} differs from data "
+                f"{tuple(X_test.shape[2:])}. Using checkpoint shape. "
+                f"Pass --input_channels to override."
+            )
+    else:
+        in_shape = data_in_shape
 
     # Determine if we have ground truth targets
     has_targets = y_test is not None

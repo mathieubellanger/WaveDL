@@ -46,6 +46,10 @@ try:
 
     MOBILENETV3_AVAILABLE = True
 except ImportError:
+    mobilenet_v3_small = None
+    mobilenet_v3_large = None
+    MobileNet_V3_Small_Weights = None
+    MobileNet_V3_Large_Weights = None
     MOBILENETV3_AVAILABLE = False
 
 from wavedl.models.base import BaseModel
