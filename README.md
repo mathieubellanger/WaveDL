@@ -1232,10 +1232,10 @@ Beyond the material characterization example above, the WaveDL pipeline can be a
 If you use WaveDL in your research, please cite:
 
 ```bibtex
-@software{le2025wavedl,
+@software{le2026wavedl,
   author = {Le, Ductho},
   title = {{WaveDL}: A Scalable Deep Learning Framework for Wave-Based Inverse Problems},
-  year = {2025},
+  year = {2026},
   publisher = {Zenodo},
   doi = {10.5281/zenodo.18012338},
   url = {https://doi.org/10.5281/zenodo.18012338}
@@ -1243,7 +1243,7 @@ If you use WaveDL in your research, please cite:
 ```
 
 Or in APA format:
-> Le, D. (2025). *WaveDL: A Scalable Deep Learning Framework for Wave-Based Inverse Problems*. Zenodo. https://doi.org/10.5281/zenodo.18012338
+> Le, D. (2026). *WaveDL: A Scalable Deep Learning Framework for Wave-Based Inverse Problems*. Zenodo. https://doi.org/10.5281/zenodo.18012338
 
 Please also consider to cite other related papers:
 
