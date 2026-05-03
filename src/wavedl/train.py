@@ -232,12 +232,11 @@ def parse_args() -> argparse.Namespace:
         help="Python modules to import before training (for custom models)",
     )
     parser.add_argument(
-        "--no_pretrained",
-        dest="pretrained",
-        action="store_false",
-        help="Train from scratch without pretrained weights (default: use pretrained)",
+        "--pretrained",
+        action="store_true",
+        help="Use ImageNet pretrained weights (only for *_pretrained model variants). "
+        "Default: train from scratch.",
     )
-    parser.set_defaults(pretrained=True)
 
     # Configuration File
     parser.add_argument(

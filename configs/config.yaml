@@ -53,8 +53,8 @@ model: cnn                    # 21 architectures (69 variants) available:
                               # ResNet3D:  resnet3d_18, mc3_18
                               # U-Net:     unet_regression
 
-pretrained: true              # Use ImageNet pretrained weights (for supported models)
-                              # Set to false to train from scratch
+pretrained: false             # Set to true to use ImageNet pretrained weights
+                              # (only effective for *_pretrained model variants)
 
 # =============================================================================
 # TRAINING HYPERPARAMETERS

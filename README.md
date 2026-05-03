@@ -459,7 +459,7 @@ WaveDL/
 
 ⭐ = **Pretrained on ImageNet** (recommended for smaller datasets). Weights are downloaded automatically on first use.
 - **Cache location**: `~/.cache/torch/hub/checkpoints/` (or `./.torch_cache/` on HPC if home is not writable)
-- **Train from scratch**: Use `--no_pretrained` to disable pretrained weights
+- **Use pretrained weights**: Pass `--pretrained` (default: train from scratch). Only effective for `*_pretrained` model variants marked with ⭐ above.
 
 **💡 HPC Users**: If compute nodes block internet, pre-download weights on the login node:
 
@@ -1236,14 +1236,13 @@ If you use WaveDL in your research, please cite:
   author = {Le, Ductho},
   title = {{WaveDL}: A Scalable Deep Learning Framework for Wave-Based Inverse Problems},
   year = {2026},
-  publisher = {Zenodo},
   doi = {10.5281/zenodo.18012338},
   url = {https://doi.org/10.5281/zenodo.18012338}
 }
 ```
 
 Or in APA format:
-> Le, D. (2026). *WaveDL: A Scalable Deep Learning Framework for Wave-Based Inverse Problems*. Zenodo. https://doi.org/10.5281/zenodo.18012338
+> Le, D. (2026). *WaveDL: A Scalable Deep Learning Framework for Wave-Based Inverse Problems*. https://doi.org/10.5281/zenodo.18012338
 
 Please also consider to cite other related papers:
 

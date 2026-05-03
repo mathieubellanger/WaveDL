@@ -276,7 +276,7 @@ def validate_config(
             action.dest for action in parser._actions if action.dest != "help"
         }
         # Also accept the raw flag names without leading dashes
-        # (e.g., YAML may use 'no_pretrained' or 'mixed_precision')
+        # (e.g., YAML may use 'pretrained' or 'mixed_precision')
         for action in parser._actions:
             for opt in action.option_strings:
                 check_keys.add(opt.lstrip("-").replace("-", "_"))
