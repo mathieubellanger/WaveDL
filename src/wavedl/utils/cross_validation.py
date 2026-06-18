@@ -392,6 +392,11 @@ def run_cross_validation(
 
     # Setup cross-validation
     if stratify:
+        if y.ndim > 1 and y.shape[1] > 1:
+            logger.warning(
+                "⚠️  Stratification bins on the first target only (y[:, 0]); "
+                "other targets may be imbalanced across folds."
+            )
         try:
             # Bin targets for stratification (regression)
             y_binned = np.digitize(
@@ -550,8 +555,8 @@ def run_cross_validation(
         },
         "timestamp": datetime.now().isoformat(),
         "folds": folds,
-        "r2_mean": float(np.mean(r2_scores)),
-        "r2_std": float(np.std(r2_scores)),
+        "r2_mean": float(np.nanmean(r2_scores)),
+        "r2_std": float(np.nanstd(r2_scores)),
         "mae_mean": float(np.mean(mae_scores)),
         "mae_std": float(np.std(mae_scores)),
         "val_loss_mean": float(np.mean(val_losses)),
@@ -570,8 +575,8 @@ def run_cross_validation(
         r2_target = [r.get(f"r2_target_{i}", np.nan) for r in fold_results]
         mae_target = [r.get(f"mae_target_{i}", np.nan) for r in fold_results]
         logger.info(
-            f"   Target {i}: R²={np.mean(r2_target):.4f}±{np.std(r2_target):.4f}, "
-            f"MAE={np.mean(mae_target):.4f}±{np.std(mae_target):.4f}"
+            f"   Target {i}: R²={np.nanmean(r2_target):.4f}±{np.nanstd(r2_target):.4f}, "
+            f"MAE={np.nanmean(mae_target):.4f}±{np.nanstd(mae_target):.4f}"
         )
 
     # Save summary (without bulky history to keep JSON small)

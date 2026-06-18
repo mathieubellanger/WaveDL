@@ -106,6 +106,17 @@ class CNN(BaseModel):
         self.dropout_rate = dropout_rate
         self.dim = len(in_shape)
 
+        # The encoder applies 5 stride-2 pools, downsampling each spatial axis by
+        # 32x. Reject inputs that would collapse to size 0 with a clear message
+        # instead of a cryptic 'max_pool ... Invalid computed output size: 0' crash.
+        min_size = 2**5
+        for i, s in enumerate(in_shape):
+            if s < min_size:
+                raise ValueError(
+                    f"CNN requires each spatial axis >= {min_size} (5 stride-2 "
+                    f"pools), but axis {i} has size {s}."
+                )
+
         # Get dimension-appropriate layer classes
         self._Conv, self._MaxPool, self._Dropout = _get_conv_layers(self.dim)
 

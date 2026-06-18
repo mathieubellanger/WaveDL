@@ -19,6 +19,8 @@ Author: Ductho Le (ductho.le@outlook.com)
 Version: 1.0.0
 """
 
+import warnings
+
 import torch.optim as optim
 from torch.optim.lr_scheduler import (
     CosineAnnealingLR,
@@ -76,7 +78,7 @@ def get_scheduler(
     # Step/MultiStep parameters
     step_size: int = 30,
     milestones: list[int] | None = None,
-    gamma: float = 0.99,
+    gamma: float | None = None,
     # Linear warmup parameters
     warmup_epochs: int = 5,
     start_factor: float = 0.1,
@@ -100,7 +102,9 @@ def get_scheduler(
         pct_start: Percentage of cycle spent increasing LR (OneCycleLR)
         step_size: Period for StepLR
         milestones: Epochs to decay LR for MultiStepLR
-        gamma: Decay factor (0.1 for step/multistep, 0.99 for exponential)
+        gamma: Decay factor. If None, defaults to 0.1 for step/multistep and
+            0.95 for exponential. ExponentialLR applies gamma every epoch, so
+            small values (e.g. 0.5) decay the LR very fast.
         warmup_epochs: Number of warmup epochs for linear_warmup
         start_factor: Starting LR factor for warmup (LR * start_factor)
         **kwargs: Additional arguments passed to scheduler
@@ -162,18 +166,27 @@ def get_scheduler(
         )
 
     elif name_lower == "step":
-        step_gamma = gamma if gamma != 0.99 else 0.1
+        step_gamma = gamma if gamma is not None else 0.1
         return StepLR(optimizer, step_size=step_size, gamma=step_gamma, **kwargs)
 
     elif name_lower == "multistep":
         if milestones is None:
             # Default milestones at 30%, 60%, 90% of epochs
             milestones = [int(epochs * 0.3), int(epochs * 0.6), int(epochs * 0.9)]
-        step_gamma = gamma if gamma != 0.99 else 0.1
+        step_gamma = gamma if gamma is not None else 0.1
         return MultiStepLR(optimizer, milestones=milestones, gamma=step_gamma, **kwargs)
 
     elif name_lower == "exponential":
-        return ExponentialLR(optimizer, gamma=gamma, **kwargs)
+        exp_gamma = gamma if gamma is not None else 0.95
+        if exp_gamma < 0.9:
+            warnings.warn(
+                f"ExponentialLR applies gamma every epoch; gamma={exp_gamma} decays "
+                f"the LR by {(1 - exp_gamma) * 100:.0f}% per epoch, which is very "
+                "aggressive. Use a value closer to 1.0 (e.g. 0.95) for gradual decay.",
+                UserWarning,
+                stacklevel=2,
+            )
+        return ExponentialLR(optimizer, gamma=exp_gamma, **kwargs)
 
     elif name_lower == "linear_warmup":
         return LinearLR(
@@ -216,6 +229,19 @@ def get_scheduler_with_warmup(
         ...     "cosine", optimizer, warmup_epochs=5, epochs=100
         ... )
     """
+    # This SequentialLR combiner only supports epoch-based, epochs-parameterized
+    # main schedulers. OneCycleLR steps per batch (incompatible with an epoch-count
+    # milestone and has its own warmup via pct_start); cosine_restarts/step are
+    # keyed on T_0/step_size rather than `epochs`, so the warmup budget adjustment
+    # below would not shorten them.
+    name_lower = name.lower().replace("-", "_")
+    if name_lower in {"onecycle", "cosine_restarts"}:
+        raise ValueError(
+            f"get_scheduler_with_warmup does not support '{name}'. Use OneCycleLR's "
+            "built-in pct_start warmup, or a warmup-compatible scheduler "
+            "(cosine, step, multistep, exponential)."
+        )
+
     # Create warmup scheduler
     warmup_scheduler = LinearLR(
         optimizer,

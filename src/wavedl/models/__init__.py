@@ -79,15 +79,6 @@ from .vit import ViTBase_, ViTSmall, ViTTiny
 from .wavenet import WaveNet, WaveNetLarge, WaveNetSmall
 
 
-# RATENet (unpublished, may be gitignored)
-try:
-    from .ratenet import RATENet, RATENetBase
-
-    _HAS_RATENET = True
-except ImportError:
-    _HAS_RATENET = False
-
-
 # Optional timm-based models (imported conditionally)
 try:
     from .caformer import CaFormerS18, CaFormerS36, PoolFormerS12
@@ -196,7 +187,3 @@ if _HAS_TIMM_MODELS:
             "UniRepLKNetTiny",
         ]
     )
-
-# Add RATENet to __all__ if available (unpublished)
-if _HAS_RATENET:
-    __all__.extend(["RATENet", "RATENetBase"])

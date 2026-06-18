@@ -1290,6 +1290,25 @@ def prepare_data(
                         )
                     cache_exists = False
 
+            # The scaler is fit on the training split, which depends on val_split
+            # and seed. If either changed since the cache was built, reusing the
+            # cached scaler would fit it on samples now in the validation set
+            # (leakage). Regenerate so the scaler matches the current split.
+            if cache_exists:
+                cached_val_split = meta.get("val_split", None)
+                cached_seed = meta.get("seed", None)
+                if (cached_val_split is not None and cached_val_split != val_split) or (
+                    cached_seed is not None
+                    and cached_seed != getattr(args, "seed", None)
+                ):
+                    if accelerator.is_main_process:
+                        logger.warning(
+                            "⚠️  val_split/seed changed since cache was built; "
+                            "regenerating to refit the scaler on the correct "
+                            "training split (avoids validation-set leakage)..."
+                        )
+                    cache_exists = False
+
             # Verify completion sentinel — catches interrupted cache writes
             if cache_exists and not meta.get("cache_complete", False):
                 if accelerator.is_main_process:
@@ -1380,6 +1399,18 @@ def prepare_data(
             # Detect shape (handle sparse matrices) - DIMENSION AGNOSTIC
             num_samples = len(inp)
 
+            # MAT files store outputs column-major. The eager MATSource.load() path
+            # normalizes transposed MATLAB vectors, but the mmap path returns a raw
+            # transposed view with NO normalization. Apply the same normalization
+            # here so out_dim and the scaler are correct — otherwise a single target
+            # saved as a (1, N) row vector yields out_dim=N and crashes scaler fitting.
+            if data_format == "mat" and len(getattr(outp, "shape", ())) == 2:
+                outp = np.asarray(outp[:])
+                if outp.shape[0] == 1 and outp.shape[1] == num_samples:
+                    outp = outp.T  # (1, N) -> (N, 1): N samples, 1 target
+                elif outp.shape[1] == 1 and outp.shape[0] != num_samples:
+                    outp = outp.T  # (T, 1) -> (1, T): 1 sample, T targets
+
             # Handle 1D targets: (N,) -> treat as single output
             if outp.ndim == 1:
                 out_dim = 1
@@ -1443,6 +1474,9 @@ def prepare_data(
                 "data_path": os.path.abspath(args.data_path),
                 "file_size": file_stats.st_size,
                 "content_hash": content_hash,
+                # Split parameters the scaler fit depends on (see cache validation).
+                "val_split": val_split,
+                "seed": getattr(args, "seed", None),
             }
 
             # Create memmap cache

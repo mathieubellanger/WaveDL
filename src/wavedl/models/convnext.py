@@ -148,6 +148,7 @@ class ConvNeXtBase(BaseModel):
         depths: list[int],
         dims: list[int],
         dropout_rate: float = 0.1,
+        drop_path_rate: float | None = None,
         **kwargs,
     ):
         super().__init__(in_shape, out_size)
@@ -156,6 +157,10 @@ class ConvNeXtBase(BaseModel):
         self.depths = depths
         self.dims = dims
         self.dropout_rate = dropout_rate
+        # Stochastic-depth rate, decoupled from head dropout (matches the
+        # ConvNeXtV2/UniRepLKNet siblings). Falls back to the previous coupled
+        # behavior (dropout_rate * 0.5) when not specified, to preserve defaults.
+        self.drop_path_rate = drop_path_rate
 
         # Validate minimum spatial size:
         # stem stride-4 × (len(depths)-1) stride-2 downsamplers
@@ -182,7 +187,8 @@ class ConvNeXtBase(BaseModel):
 
         # Linearly increasing drop-path rates across all blocks (paper practice)
         total_blocks = sum(depths)
-        dp_rates = torch.linspace(0, dropout_rate * 0.5, total_blocks).tolist()
+        dp_max = drop_path_rate if drop_path_rate is not None else dropout_rate * 0.5
+        dp_rates = torch.linspace(0, dp_max, total_blocks).tolist()
         block_idx = 0
 
         for i in range(4):
@@ -212,8 +218,9 @@ class ConvNeXtBase(BaseModel):
         else:
             self.global_pool = nn.AdaptiveAvgPool3d(1)
 
-        # Final norm and regression head
-        self.norm = nn.LayerNorm(dims[-1])
+        # Final norm and regression head (eps=1e-6 matches the in-block norms and
+        # the ConvNeXtV2/UniRepLKNet siblings; the default 1e-5 was inconsistent)
+        self.norm = nn.LayerNorm(dims[-1], eps=1e-6)
         self.head = nn.Sequential(
             nn.Dropout(dropout_rate),
             nn.Linear(dims[-1], 512),

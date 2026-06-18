@@ -630,8 +630,11 @@ def train_single_trial(
     amp_dtype = torch.bfloat16 if precision == "bf16" else torch.float16
     scaler = torch.amp.GradScaler("cuda", enabled=(use_amp and precision == "fp16"))
 
-    # Load and prepare data using temporary directory
-    with tempfile.TemporaryDirectory() as tmpdir:
+    # Load and prepare data using temporary directory.
+    # ignore_cleanup_errors: on Windows the memmap cache (.dat) may still be held
+    # open by the dataloaders when the block exits; tolerate the cleanup race
+    # (the OS reclaims the temp dir) instead of crashing the trial.
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
         # Create a minimal args-like object for prepare_data
         class Args:
             pass
@@ -640,7 +643,6 @@ def train_single_trial(
         args.data_path = data_path
         args.batch_size = batch_size
         args.workers = workers
-        args.val_size = 0.2
         args.cache_validate = "fast"
         args.single_channel = False
         args.seed = seed  # Required by prepare_data for train_test_split
@@ -1415,6 +1417,13 @@ def main():
                     logger.info(
                         "   Loaded standalone checkpoint (emergency format, scheduler restored)"
                     )
+                    if scheduler_step_per_batch:
+                        logger.warning(
+                            "   ⚠️ Resuming a per-batch scheduler (e.g. OneCycleLR) "
+                            "from an emergency checkpoint: the interrupted epoch is "
+                            "replayed from its start, so the LR schedule may be "
+                            "slightly desynchronized for that epoch."
+                        )
                 else:
                     logger.warning(
                         "   ⚠️ Loaded standalone checkpoint WITHOUT scheduler state — "
@@ -1566,9 +1575,13 @@ def main():
                     # Use mixed precision for validation (consistent with training)
                     with accelerator.autocast():
                         pred = model(x)
-                        # Pass inputs for input-dependent constraints
+                        # Validation metric uses the BASE loss (no physics penalty).
+                        # The penalty is input-dependent (needs x), which the
+                        # de-padded multi-GPU recompute below cannot evaluate; using
+                        # base loss in both regimes keeps the selection/early-stopping
+                        # metric identical across single- and multi-GPU runs.
                         if isinstance(criterion, PhysicsConstrainedLoss):
-                            loss = criterion(pred, y, x)
+                            loss = criterion.base_loss(pred, y)
                         else:
                             loss = criterion(pred, y)
 
@@ -1716,8 +1729,9 @@ def main():
                     for i, mae in enumerate(avg_mae_per_param):
                         log_dict[f"mae_detailed/P{i}"] = mae
 
-                    # Periodic scatter plots
-                    if (epoch % WANDB_SCATTER_INTERVAL == 0) or (
+                    # Periodic scatter plots (epoch+1 to match the displayed/logged
+                    # 1-indexed epoch numbering used everywhere else in the loop)
+                    if ((epoch + 1) % WANDB_SCATTER_INTERVAL == 0) or (
                         avg_val_loss < best_val_loss
                     ):
                         real_true = scaler.inverse_transform(y_true)

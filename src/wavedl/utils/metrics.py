@@ -218,13 +218,16 @@ def calc_pearson(y_true: np.ndarray, y_pred: np.ndarray) -> float:
         y_true = y_true.reshape(-1, 1)
         y_pred = y_pred.reshape(-1, 1)
 
+    n_samples = y_true.shape[0]
     correlations = []
     for i in range(y_true.shape[1]):
         # Check for near-constant arrays to avoid NaN
         std_true = np.std(y_true[:, i])
         std_pred = np.std(y_pred[:, i])
 
-        if std_true < 1e-9 or std_pred < 1e-9:
+        # Pearson is degenerate for < 3 samples (any 2 points are perfectly
+        # collinear → a spurious ±1.0), so report 0.0 instead of a misleading 1.0.
+        if n_samples < 3 or std_true < 1e-9 or std_pred < 1e-9:
             correlations.append(0.0)
         else:
             corr, _ = pearsonr(y_true[:, i], y_pred[:, i])
@@ -267,6 +270,7 @@ def _prepare_plot_data(
     y_pred: np.ndarray,
     param_names: list[str] | None = None,
     max_samples: int | None = None,
+    seed: int = 42,
 ) -> tuple[np.ndarray, np.ndarray, list[str], int]:
     """Prepare data for plotting: reshape, sample, and generate param names."""
     # Handle 1D case
@@ -276,9 +280,11 @@ def _prepare_plot_data(
 
     num_params = y_true.shape[1]
 
-    # Subsample if needed
+    # Subsample if needed. Use a seeded local generator so figures are
+    # reproducible across runs and the global numpy RNG state is left untouched.
     if max_samples and len(y_true) > max_samples:
-        indices = np.random.choice(len(y_true), max_samples, replace=False)
+        rng = np.random.default_rng(seed)
+        indices = rng.choice(len(y_true), max_samples, replace=False)
         y_true = y_true[indices]
         y_pred = y_pred[indices]
 
@@ -361,6 +367,14 @@ def plot_scientific_scatter(
         Matplotlib Figure object (can be saved or logged to WandB)
     """
     _ensure_style_configured()
+    # Compute R² on the FULL dataset BEFORE subsampling so the annotation matches
+    # the reported (full-dataset) metric rather than a random 2000-point subset.
+    _yt_full = y_true.reshape(-1, 1) if y_true.ndim == 1 else y_true
+    _yp_full = y_pred.reshape(-1, 1) if y_pred.ndim == 1 else y_pred
+    full_r2 = [
+        r2_score(_yt_full[:, i], _yp_full[:, i]) if len(_yt_full) >= 2 else float("nan")
+        for i in range(_yt_full.shape[1])
+    ]
     y_true, y_pred, param_names, num_params = _prepare_plot_data(
         y_true, y_pred, param_names, max_samples
     )
@@ -369,8 +383,8 @@ def plot_scientific_scatter(
     for i in range(num_params):
         ax = axes[i]
 
-        # Calculate R² for this target
-        r2 = r2_score(y_true[:, i], y_pred[:, i]) if len(y_true) >= 2 else float("nan")
+        # R² computed on the full dataset above (not the plotted subsample)
+        r2 = full_r2[i] if i < len(full_r2) else float("nan")
 
         # Scatter plot (using plot for vector SVG compatibility)
         ax.plot(
@@ -932,9 +946,15 @@ def plot_correlation_heatmap(
     if param_names is None or len(param_names) != num_params:
         param_names = [f"P{i}" for i in range(num_params)]
 
-    # Calculate prediction error correlations
+    # Calculate prediction error correlations.
+    # Guard zero-variance error columns (a target predicted as a near-constant):
+    # np.corrcoef divides by per-column std and would fill that row/col with NaN,
+    # producing 'nan' annotations and 'bad' colors. Neutralize NaN to 0 (diag 1).
     errors = y_pred - y_true
-    corr_matrix = np.corrcoef(errors.T)
+    with np.errstate(invalid="ignore", divide="ignore"):
+        corr_matrix = np.corrcoef(errors.T)
+    corr_matrix = np.nan_to_num(corr_matrix, nan=0.0)
+    np.fill_diagonal(corr_matrix, 1.0)
 
     # Create figure
     fig_size = min(FIGURE_WIDTH_INCH * 0.6, 2 + num_params * 0.6)

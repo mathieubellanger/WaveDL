@@ -39,8 +39,11 @@ SAFE_FUNCTIONS: dict[str, Callable] = {
     "cos": torch.cos,
     "tan": torch.tan,
     "exp": torch.exp,
-    "log": torch.log,
-    "sqrt": torch.sqrt,
+    # log/sqrt are domain-protected: clamp the argument to a small positive floor
+    # so denormalized predictions <= 0 (common before convergence) yield a finite
+    # penalty/gradient instead of NaN/-inf, which would poison training via backprop.
+    "log": lambda t: torch.log(torch.clamp(t, min=1e-12)),
+    "sqrt": lambda t: torch.sqrt(torch.clamp(t, min=1e-12)),
     "abs": torch.abs,
     "relu": F.relu,
     "sigmoid": torch.sigmoid,

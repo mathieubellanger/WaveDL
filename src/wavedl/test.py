@@ -597,6 +597,13 @@ def export_to_onnx(
             model=model, scaler_mean=scaler.mean_, scaler_scale=scaler.scale_
         )
 
+    # Validate opset up front (the documented supported range is 11-17) so a
+    # bad --export_opset fails with a clear message rather than deep in the exporter.
+    if not (11 <= opset_version <= 17):
+        raise ValueError(
+            f"export_opset must be between 11 and 17, got {opset_version}."
+        )
+
     # Ensure model is in eval mode on CPU for consistent export
     model = model.cpu()
     model.eval()
@@ -1011,6 +1018,12 @@ def main():
 
     # Determine output size: from targets, from --out_size, or from scaler
     if args.out_size is not None:
+        if has_targets and args.out_size != y_test.shape[1]:
+            raise ValueError(
+                f"--out_size={args.out_size} conflicts with the {y_test.shape[1]} "
+                f"target column(s) present in the data file. Omit --out_size to use "
+                f"the target count, or fix the mismatch."
+            )
         out_size = args.out_size
         logger.info(f"   Using explicit --out_size={out_size}")
     elif has_targets:

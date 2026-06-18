@@ -136,6 +136,15 @@ def merge_config_with_args(
                     cli_overrides.add(action.dest)
                     break
 
+    # Map argparse dest -> declared type, used to coerce native YAML sequences
+    # into the comma-separated string form expected by str-typed list args
+    # (betas/milestones/loss_weights). merge bypasses argparse type casting.
+    arg_types: dict[str, type] = {}
+    if parser is not None:
+        for action in parser._actions:
+            if action.type is not None:
+                arg_types[action.dest] = action.type
+
     # Apply config values only where CLI didn't override
     for key, value in config.items():
         target_key = key
@@ -145,7 +154,11 @@ def merge_config_with_args(
             stripped = key.split("_", 1)[1]
             if hasattr(args, stripped):
                 target_key = stripped
-                logging.info(f"Config: nested key '{key}' → mapped to '{stripped}'")
+                logging.warning(
+                    f"Config: key '{key}' did not match an argument directly; "
+                    f"mapped to '{stripped}' by stripping the prefix. "
+                    "Verify this is intended (not a typo)."
+                )
 
         if hasattr(args, target_key):
             # Skip if user explicitly set this via CLI
@@ -154,6 +167,13 @@ def merge_config_with_args(
                     f"Config key '{target_key}' skipped: CLI override detected"
                 )
                 continue
+            # Coerce native YAML sequences (e.g. betas: [0.9, 0.999]) to the
+            # comma-separated string the str-typed arg + later .split(",") expects.
+            if isinstance(value, (list, tuple)) and (
+                arg_types.get(target_key) is str
+                or isinstance(getattr(args, target_key, None), str)
+            ):
+                value = ",".join(str(v) for v in value)
             setattr(args, target_key, value)
         elif not ignore_unknown:
             logging.warning(f"Unknown config key: {key}")
@@ -244,9 +264,21 @@ def validate_config(
                 f"Invalid {key}='{config[key]}'. Valid options: {valid_values}"
             )
 
+    # Validate argparse choice-constrained options (precision, mixed_precision,
+    # cache_validate, constraint_reduction, ...). merge bypasses argparse, so
+    # these `choices=` constraints are otherwise never enforced.
+    if parser is not None:
+        for action in parser._actions:
+            if action.choices and action.dest in config:
+                if config[action.dest] not in action.choices:
+                    warnings.append(
+                        f"Invalid {action.dest}='{config[action.dest]}'. "
+                        f"Valid options: {list(action.choices)}"
+                    )
+
     # Validate numeric ranges
     numeric_checks = {
-        "lr": (0, 10, "Learning rate should be between 0 and 10"),
+        "lr": (1e-12, 10, "Learning rate must be > 0 and <= 10"),
         "epochs": (1, 100000, "Epochs should be positive"),
         "batch_size": (1, 10000, "Batch size should be positive"),
         "patience": (1, 1000, "Patience should be positive"),

@@ -11,7 +11,8 @@ fields and expressive nonlinearities.
     - Skip connections: all blocks contribute to the final output
     - Exponentially growing dilation: receptive field grows with depth
     - Same padding (non-causal): appropriate for regression, not generation
-    - GroupNorm for torch.compile compatibility
+    - No normalization layers: stability comes from the gated tanh×sigmoid
+      activations and residual/skip connections
 
 **Variants**:
     - wavenet_small: 32 channels, 6 dilation levels (~1.0M params)

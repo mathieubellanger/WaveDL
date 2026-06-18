@@ -297,6 +297,11 @@ def adapt_input_channels(
             kernel_size=conv_layer.kernel_size,
             stride=conv_layer.stride,
             padding=conv_layer.padding,
+            # Preserve the full conv geometry for parity with the per-model
+            # adapters; dropping these silently corrupts any non-default stem.
+            dilation=conv_layer.dilation,
+            groups=conv_layer.groups,
+            padding_mode=conv_layer.padding_mode,
             bias=conv_layer.bias is not None,
         )
         if pretrained and conv_layer.in_channels == 3:

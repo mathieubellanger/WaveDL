@@ -122,7 +122,9 @@ class MaxViTBase(BaseModel):
                 "timm is required for MaxViT. Install with: pip install timm"
             )
         except Exception as e:
-            raise RuntimeError(f"Failed to load MaxViT model '{model_name}': {e}")
+            raise RuntimeError(
+                f"Failed to load MaxViT model '{model_name}': {e}"
+            ) from e
 
         # Adapt input channels (3 -> 1)
         self._adapt_input_channels()

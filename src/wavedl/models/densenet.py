@@ -133,7 +133,8 @@ class DenseNetBase(BaseModel):
     Base DenseNet class for regression tasks.
 
     Architecture:
-    1. Stem: 7x7 conv + max pool
+    1. Stem: 7x7 conv + avg pool (AvgPool used instead of MaxPool for
+       torch.compile compatibility — see stem comment)
     2. 4 dense blocks with transitions between them
     3. Global average pooling
     4. Regression head
@@ -165,7 +166,9 @@ class DenseNetBase(BaseModel):
             Conv(1, num_init_features, kernel_size=7, stride=2, padding=3, bias=False),
             BN(num_init_features),
             nn.ReLU(inplace=True),
-            AvgPool(kernel_size=3, stride=2, padding=1),
+            # count_include_pad=False so border windows are not biased toward zero
+            # by the zero padding (unlike MaxPool, which ignores padding).
+            AvgPool(kernel_size=3, stride=2, padding=1, count_include_pad=False),
         )
 
         # Build dense blocks and transitions

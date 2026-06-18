@@ -268,6 +268,18 @@ class UniRepLKNetBase(BaseModel):
         self.depths = depths
         self.dims = dims
 
+        # Validate minimum spatial size (matches ConvNeXt/ConvNeXtV2 siblings):
+        # stem stride-4 × (len(depths)-1) stride-2 downsamplers.
+        min_size = 4 * (2 ** (len(depths) - 1))
+        for i, s in enumerate(in_shape):
+            if s < min_size:
+                raise ValueError(
+                    f"UniRepLKNet requires each spatial axis >= {min_size}, "
+                    f"but axis {i} has size {s}. "
+                    f"(stem stride 4 x {len(depths) - 1} stride-2 "
+                    f"downsamplers = {min_size}x)"
+                )
+
         # Default kernel sizes: larger in early stages, smaller in later stages
         # Early stages: large receptive field for low-level features
         # Later stages: smaller kernels sufficient for high-level features

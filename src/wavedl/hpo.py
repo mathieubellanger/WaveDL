@@ -51,6 +51,20 @@ except ImportError:
     sys.exit(1)
 
 
+def _detect_gpu_count() -> int:
+    """Return the number of GPUs via nvidia-smi (best effort, defaults to 1)."""
+    try:
+        result = subprocess.run(
+            ["nvidia-smi", "--list-gpus"], capture_output=True, text=True
+        )
+        if result.returncode == 0:
+            lines = result.stdout.strip()
+            return max(1, len(lines.split("\n"))) if lines else 1
+    except Exception:
+        pass
+    return 1
+
+
 # =============================================================================
 # DEFAULT SEARCH SPACES
 # =============================================================================
@@ -232,20 +246,9 @@ def create_objective(args):
             if args.n_jobs > 1:
                 import os
 
-                # Detect available GPUs
-                n_gpus = 1
-                try:
-                    import subprocess as sp
-
-                    result_gpu = sp.run(
-                        ["nvidia-smi", "--list-gpus"],
-                        capture_output=True,
-                        text=True,
-                    )
-                    if result_gpu.returncode == 0:
-                        n_gpus = len(result_gpu.stdout.strip().split("\n"))
-                except Exception:
-                    pass
+                # GPU count is detected once in main() (stored on args.n_gpus),
+                # avoiding a per-trial nvidia-smi subprocess spawn.
+                n_gpus = max(1, getattr(args, "n_gpus", 1))
 
                 # Assign trial to a specific GPU (round-robin)
                 gpu_id = trial.number % n_gpus
@@ -368,12 +371,14 @@ Examples:
         default=-1,
         help="Parallel trials (-1 = auto-detect GPUs, default: -1)",
     )
-    parser.add_argument(
+    # --quick and --medium are mutually exclusive search-space presets.
+    mode_group = parser.add_mutually_exclusive_group()
+    mode_group.add_argument(
         "--quick",
         action="store_true",
         help="Quick mode: search fewer parameters (fastest, least thorough)",
     )
-    parser.add_argument(
+    mode_group.add_argument(
         "--medium",
         action="store_true",
         help="Medium mode: balanced parameter search (between --quick and full)",
@@ -465,22 +470,16 @@ Examples:
         print(f"Error: Data file not found: {args.data_path}")
         sys.exit(1)
 
+    # Detect GPU count once (reused by subprocess trials for round-robin pinning).
+    args.n_gpus = _detect_gpu_count()
+
     # Auto-detect GPUs for n_jobs if not specified
     if args.n_jobs == -1:
-        try:
-            result_gpu = subprocess.run(
-                ["nvidia-smi", "--list-gpus"],
-                capture_output=True,
-                text=True,
-            )
-            if result_gpu.returncode == 0:
-                gpu_lines = result_gpu.stdout.strip()
-                args.n_jobs = max(1, len(gpu_lines.split("\n"))) if gpu_lines else 1
-            else:
-                args.n_jobs = 1
-        except Exception:
-            args.n_jobs = 1
+        args.n_jobs = args.n_gpus
         print(f"Auto-detected {args.n_jobs} GPU(s) for parallel trials")
+    elif args.n_jobs < 1:
+        print(f"Error: --n_jobs must be -1 (auto-detect) or >= 1, got {args.n_jobs}.")
+        sys.exit(1)
 
     # Create study
     print("=" * 60)
@@ -530,6 +529,16 @@ Examples:
         load_if_exists=True,
     )
 
+    # Surface implicit resume: a persistent study with the same name is reused,
+    # which appends to prior trials. Warn so a search-space change isn't silent.
+    if storage and len(study.trials) > 0:
+        print(
+            f"⚠️  Resuming existing study '{args.study_name}' with "
+            f"{len(study.trials)} prior trial(s). If you changed the search space "
+            "(models/optimizers/batch sizes/mode), pass a new --study_name or "
+            "--storage none to avoid distribution-mismatch errors."
+        )
+
     # In-process mode: force single-threaded to avoid GPU memory contention
     if args.inprocess and args.n_jobs > 1:
         print(
@@ -540,11 +549,15 @@ Examples:
 
     # Run optimization
     objective = create_objective(args)
+    # catch=(Exception,): a trial that errors (OOM, NaN, bad config combo, crashed
+    # subprocess) is recorded as FAILED and the sweep continues, instead of one
+    # bad trial aborting the entire run. TrialPruned is handled separately.
     study.optimize(
         objective,
         n_trials=args.n_trials,
         n_jobs=args.n_jobs,
         show_progress_bar=True,
+        catch=(Exception,),
     )
 
     # Results

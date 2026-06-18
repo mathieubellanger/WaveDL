@@ -100,7 +100,9 @@ class FastViTBase(BaseModel):
                 "Install with: pip install timm>=0.9.0"
             )
         except Exception as e:
-            raise RuntimeError(f"Failed to load FastViT model '{model_name}': {e}")
+            raise RuntimeError(
+                f"Failed to load FastViT model '{model_name}': {e}"
+            ) from e
 
         # Adapt input channels (3 -> 1)
         self._adapt_input_channels()
